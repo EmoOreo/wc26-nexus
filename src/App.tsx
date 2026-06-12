@@ -1,41 +1,184 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Stars, Environment } from '@react-three/drei';
-import { Trophy, MapPin, Play, WifiOff } from 'lucide-react';
+import { Trophy, MapPin, Play, WifiOff, RefreshCw } from 'lucide-react';
+
+type ActiveTab = 'overview' | 'groups' | 'fixtures' | 'bracket';
+type DataStatus = 'loading' | 'public-api' | 'no-data' | 'api-error';
+
+interface RawGame {
+  id?: string | number;
+  home_team_id?: string | number;
+  away_team_id?: string | number;
+  home_team_name_en?: string;
+  away_team_name_en?: string;
+  home_score?: string | number;
+  away_score?: string | number;
+  group?: string;
+  matchday?: string | number;
+  local_date?: string;
+  stadium_id?: string | number;
+  finished?: string | boolean;
+  time_elapsed?: string;
+  type?: string;
+  [key: string]: unknown;
+}
+
+interface RawGroupTeam {
+  team_id?: string | number;
+  mp?: string | number;
+  w?: string | number;
+  l?: string | number;
+  d?: string | number;
+  pts?: string | number;
+  gf?: string | number;
+  ga?: string | number;
+  gd?: string | number;
+  [key: string]: unknown;
+}
+
+interface RawGroup {
+  name?: string;
+  teams?: RawGroupTeam[];
+  [key: string]: unknown;
+}
 
 interface Match {
   id: number;
   home: string;
   away: string;
-  score?: string;
+  score: string;
   time: string;
   group: string;
-  venue?: string;
+  matchday: string;
+  venue: string;
+  finished: boolean;
+  sortTime: number;
 }
 
-type ActiveTab = 'overview' | 'groups' | 'fixtures' | 'bracket';
-type DataStatus = 'loading' | 'public-api' | 'no-data' | 'api-error';
+interface GroupStanding {
+  group: string;
+  teamId: string;
+  teamName: string;
+  mp: number;
+  w: number;
+  d: number;
+  l: number;
+  pts: number;
+  gf: number;
+  ga: number;
+  gd: number;
+}
 
 const WORLD_CUP_OPENER_UTC = Date.UTC(2026, 5, 11, 19, 0, 0);
 const API_BASE = import.meta.env.VITE_WC26_API_URL || 'https://worldcup26.ir';
 
-function normalizeMatch(raw: any, index: number): Match {
-  const home = raw?.home || raw?.home_team || raw?.team1 || raw?.team_a || raw?.localteam || raw?.local_team || 'TBD';
-  const away = raw?.away || raw?.away_team || raw?.team2 || raw?.team_b || raw?.visitorteam || raw?.visitor_team || 'TBD';
-  const score = raw?.score || raw?.result || raw?.full_time_score || raw?.score_text || undefined;
-  const time = raw?.status || raw?.time || raw?.date || raw?.kickoff || raw?.match_time || 'SCHEDULED';
-  const group = raw?.group || raw?.stage || raw?.round || '-';
-  const venue = raw?.venue || raw?.stadium || raw?.location || undefined;
+function asArray<T>(data: unknown, key: string): T[] {
+  if (Array.isArray(data)) return data as T[];
+  if (data && typeof data === 'object' && Array.isArray((data as Record<string, unknown>)[key])) {
+    return (data as Record<string, unknown>)[key] as T[];
+  }
+  return [];
+}
+
+function toNumber(value: unknown, fallback = 0): number {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : fallback;
+}
+
+function isFinished(value: unknown): boolean {
+  return String(value).toLowerCase() === 'true' || value === true;
+}
+
+function parseLocalDate(value: unknown): number {
+  if (!value) return Number.MAX_SAFE_INTEGER;
+  const text = String(value);
+  const match = text.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/);
+
+  if (match) {
+    const [, month, day, year, hour, minute] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)).getTime();
+  }
+
+  const parsed = new Date(text).getTime();
+  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+}
+
+function formatMatchTime(value: unknown): string {
+  if (!value) return 'TBD';
+  const text = String(value);
+  const match = text.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})$/);
+
+  if (!match) return text;
+
+  const [, month, day, year, hour, minute] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function normalizeMatch(raw: RawGame, index: number): Match {
+  const finished = isFinished(raw.finished);
+  const homeScore = toNumber(raw.home_score);
+  const awayScore = toNumber(raw.away_score);
+  const score = finished ? `${homeScore}-${awayScore}` : 'VS';
 
   return {
-    id: Number(raw?.id ?? raw?.match_id ?? index + 1),
-    home: String(home),
-    away: String(away),
-    score: score ? String(score) : undefined,
-    time: String(time),
-    group: String(group),
-    venue: venue ? String(venue) : undefined,
+    id: toNumber(raw.id, index + 1),
+    home: String(raw.home_team_name_en || raw.home || raw.team1 || 'TBD'),
+    away: String(raw.away_team_name_en || raw.away || raw.team2 || 'TBD'),
+    score,
+    time: finished ? 'FT' : formatMatchTime(raw.local_date || raw.time_elapsed),
+    group: String(raw.group || '-'),
+    matchday: String(raw.matchday || '-'),
+    venue: raw.stadium_id ? `Stadium ${raw.stadium_id}` : 'Venue TBD',
+    finished,
+    sortTime: parseLocalDate(raw.local_date),
   };
+}
+
+function buildTeamNameMap(games: RawGame[]): Map<string, string> {
+  const teamNames = new Map<string, string>();
+
+  games.forEach((game) => {
+    if (game.home_team_id && game.home_team_name_en) {
+      teamNames.set(String(game.home_team_id), game.home_team_name_en);
+    }
+    if (game.away_team_id && game.away_team_name_en) {
+      teamNames.set(String(game.away_team_id), game.away_team_name_en);
+    }
+  });
+
+  return teamNames;
+}
+
+function normalizeStandings(groups: RawGroup[], teamNames: Map<string, string>): GroupStanding[] {
+  return groups.flatMap((group) => {
+    const groupName = String(group.name || '-');
+
+    return (group.teams || []).map((team) => {
+      const teamId = String(team.team_id || '-');
+
+      return {
+        group: groupName,
+        teamId,
+        teamName: teamNames.get(teamId) || `Team ${teamId}`,
+        mp: toNumber(team.mp),
+        w: toNumber(team.w),
+        d: toNumber(team.d),
+        l: toNumber(team.l),
+        pts: toNumber(team.pts),
+        gf: toNumber(team.gf),
+        ga: toNumber(team.ga),
+        gd: toNumber(team.gd),
+      };
+    });
+  });
 }
 
 function Globe() {
@@ -47,7 +190,7 @@ function Globe() {
   );
 }
 
-function MatchPin({ position }: { position: [number, number, number]; match: Match }) {
+function MatchPin({ position }: { position: [number, number, number] }) {
   return (
     <group position={position}>
       <mesh>
@@ -68,43 +211,95 @@ function EmptyState({ title, message }: { title: string; message: string }) {
   );
 }
 
+function StatusBadge({ status, lastUpdated }: { status: DataStatus; lastUpdated: string }) {
+  const label =
+    status === 'loading'
+      ? 'SYNCING'
+      : status === 'public-api'
+        ? 'PUBLIC API'
+        : status === 'api-error'
+          ? 'API ERROR'
+          : 'NO DATA';
+
+  const icon = status === 'api-error' ? <WifiOff className="w-4 h-4" /> : <Play className="w-4 h-4" />;
+
+  return (
+    <div className="px-4 py-1.5 bg-emerald-500/10 border border-emerald-500 rounded-full flex items-center gap-2">
+      {icon}
+      <span>{label}</span>
+      {lastUpdated && <span className="opacity-60">• {lastUpdated}</span>}
+    </div>
+  );
+}
+
 function WC26Nexus() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [nextMatchTime, setNextMatchTime] = useState('');
   const [matches, setMatches] = useState<Match[]>([]);
-  const [groups, setGroups] = useState<any[]>([]);
+  const [standings, setStandings] = useState<GroupStanding[]>([]);
   const [status, setStatus] = useState<DataStatus>('loading');
-  const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [lastUpdated, setLastUpdated] = useState('');
+
+  const nextMatch = useMemo(() => {
+    const now = Date.now();
+    const upcoming = matches
+      .filter((match) => !match.finished && match.sortTime >= now)
+      .sort((a, b) => a.sortTime - b.sortTime);
+
+    return upcoming[0] || matches.find((match) => !match.finished) || matches[0];
+  }, [matches]);
+
+  const fixtureList = useMemo(() => {
+    return [...matches].sort((a, b) => a.sortTime - b.sortTime).slice(0, 24);
+  }, [matches]);
+
+  const standingsByGroup = useMemo(() => {
+    const grouped = new Map<string, GroupStanding[]>();
+
+    standings.forEach((standing) => {
+      if (!grouped.has(standing.group)) grouped.set(standing.group, []);
+      grouped.get(standing.group)?.push(standing);
+    });
+
+    return [...grouped.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([group, rows]) => [
+        group,
+        rows.sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || a.teamName.localeCompare(b.teamName)),
+      ] as const);
+  }, [standings]);
 
   useEffect(() => {
     const fetchLiveData = async () => {
       try {
         setStatus('loading');
 
-        const [matchesRes, groupsRes] = await Promise.all([
+        const [gamesResponse, groupsResponse] = await Promise.all([
           fetch(`${API_BASE}/get/games`, { cache: 'no-store' }),
           fetch(`${API_BASE}/get/groups`, { cache: 'no-store' }),
         ]);
 
-        if (!matchesRes.ok || !groupsRes.ok) {
-          throw new Error(`API request failed: games ${matchesRes.status}, groups ${groupsRes.status}`);
+        if (!gamesResponse.ok || !groupsResponse.ok) {
+          throw new Error(`API request failed: games ${gamesResponse.status}, groups ${groupsResponse.status}`);
         }
 
-        const matchesData = await matchesRes.json();
-        const groupsData = await groupsRes.json();
+        const gamesJson = await gamesResponse.json();
+        const groupsJson = await groupsResponse.json();
 
-        const normalizedMatches = Array.isArray(matchesData)
-          ? matchesData.slice(0, 12).map((match, index) => normalizeMatch(match, index))
-          : [];
+        const rawGames = asArray<RawGame>(gamesJson, 'games');
+        const rawGroups = asArray<RawGroup>(groupsJson, 'groups');
+        const teamNames = buildTeamNameMap(rawGames);
+        const normalizedMatches = rawGames.map(normalizeMatch);
+        const normalizedStandings = normalizeStandings(rawGroups, teamNames);
 
         setMatches(normalizedMatches);
-        setGroups(Array.isArray(groupsData) ? groupsData : []);
+        setStandings(normalizedStandings);
         setLastUpdated(new Date().toLocaleTimeString());
-        setStatus(normalizedMatches.length > 0 || (Array.isArray(groupsData) && groupsData.length > 0) ? 'public-api' : 'no-data');
+        setStatus(normalizedMatches.length > 0 || normalizedStandings.length > 0 ? 'public-api' : 'no-data');
       } catch (error) {
         console.error('WC26 API fetch failed:', error);
         setMatches([]);
-        setGroups([]);
+        setStandings([]);
         setStatus('api-error');
       }
     };
@@ -116,39 +311,47 @@ function WC26Nexus() {
 
   useEffect(() => {
     const updateTime = () => {
-      const diff = WORLD_CUP_OPENER_UTC - Date.now();
+      if (nextMatch && !nextMatch.finished && nextMatch.sortTime !== Number.MAX_SAFE_INTEGER) {
+        const diff = nextMatch.sortTime - Date.now();
 
-      if (matches.length > 0) {
-        setNextMatchTime(matches[0].time || 'MATCH DATA ONLINE');
-        return;
+        if (diff > 0) {
+          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          setNextMatchTime(`${days}d ${hours}h AWAY`);
+          return;
+        }
       }
+
+      const diff = WORLD_CUP_OPENER_UTC - Date.now();
 
       if (diff > 0) {
         const days = Math.floor(diff / (1000 * 60 * 60 * 24));
         const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         setNextMatchTime(`${days}d ${hours}h AWAY`);
+      } else if (matches.some((match) => !match.finished)) {
+        setNextMatchTime('TOURNAMENT ACTIVE');
+      } else if (matches.length > 0) {
+        setNextMatchTime('RESULTS AVAILABLE');
       } else {
-        setNextMatchTime('AWAITING LIVE FEED');
+        setNextMatchTime(status === 'loading' ? 'SYNCING' : 'NO DATA');
       }
     };
 
     updateTime();
     const interval = window.setInterval(updateTime, 30000);
     return () => window.clearInterval(interval);
-  }, [matches]);
-
-  const visiblePins = useMemo(() => matches.slice(0, 8), [matches]);
-  const featuredMatch = matches[0];
-  const statusText = status === 'public-api' ? 'PUBLIC API' : status === 'loading' ? 'SYNCING' : status === 'no-data' ? 'NO DATA' : 'API OFFLINE';
+  }, [matches, nextMatch, status]);
 
   return (
     <div className="min-h-screen bg-black text-white overflow-hidden">
       <div className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md border-b border-cyan-500/30 p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-emerald-400 rounded-full flex items-center justify-center">⚽</div>
+          <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-emerald-400 rounded-full flex items-center justify-center">
+            ⚽
+          </div>
           <div>
             <h1 className="text-3xl font-bold tracking-tighter">WC26 NEXUS</h1>
-            <p className="text-xs text-cyan-400">2026 FIFA WORLD CUP • IMMERSIVE ORBIT</p>
+            <p className="text-xs text-cyan-400">2026 WORLD CUP • IMMERSIVE ORBIT</p>
           </div>
         </div>
 
@@ -167,10 +370,7 @@ function WC26Nexus() {
         </div>
 
         <div className="flex items-center gap-4 text-sm">
-          <div className="px-4 py-1.5 bg-emerald-500/10 border border-emerald-500 rounded-full flex items-center gap-2">
-            {status === 'api-error' ? <WifiOff className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            {statusText}
-          </div>
+          <StatusBadge status={status} lastUpdated={lastUpdated} />
         </div>
       </div>
 
@@ -179,11 +379,10 @@ function WC26Nexus() {
           <ambientLight intensity={0.3} />
           <pointLight position={[10, 10, 10]} />
           <Globe />
-          {visiblePins.map((match, i) => (
+          {fixtureList.slice(0, 12).map((match, index) => (
             <MatchPin
               key={match.id}
-              position={[Math.sin(i) * 4.5, Math.cos(i) * 1.5, Math.cos(i) * 4]}
-              match={match}
+              position={[Math.sin(index) * 4.5, Math.cos(index) * 1.5, Math.cos(index) * 4]}
             />
           ))}
           <Stars radius={300} depth={60} count={800} factor={4} saturation={0} fade speed={0.5} />
@@ -202,78 +401,114 @@ function WC26Nexus() {
               >
                 <div className="flex justify-between items-start mb-6">
                   <div>
-                    <div className="uppercase tracking-[3px] text-xs text-cyan-400">NEXT / DATA FEED</div>
+                    <div className="uppercase tracking-[3px] text-xs text-cyan-400">NEXT / FEED</div>
                     <div className="text-4xl font-bold mt-1 group-hover:text-emerald-400 transition-colors">
-                      {featuredMatch ? `${featuredMatch.home} vs ${featuredMatch.away}` : 'NO MATCH DATA'}
+                      {nextMatch ? `${nextMatch.home} vs ${nextMatch.away}` : 'NO MATCH DATA'}
                     </div>
                   </div>
                   <Trophy className="w-10 h-10 text-amber-400" />
                 </div>
                 <div className="text-6xl font-mono font-bold text-emerald-400 mb-2">{nextMatchTime}</div>
                 <div className="text-sm opacity-75">
-                  {featuredMatch?.venue || 'Venue unavailable'} • {featuredMatch?.group ? `Group/Stage ${featuredMatch.group}` : 'Stage unavailable'}
+                  {nextMatch ? `${nextMatch.venue} • Group ${nextMatch.group} • Matchday ${nextMatch.matchday}` : 'Waiting for public API data'}
                 </div>
               </div>
 
               <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-8">
                 <div className="text-6xl font-bold mb-1">48</div>
                 <div className="text-xl opacity-75">TEAMS</div>
-                <div className="h-1.5 bg-gradient-to-r from-cyan-400 to-emerald-400 rounded mt-6"></div>
+                <div className="h-1.5 bg-gradient-to-r from-cyan-400 to-emerald-400 rounded mt-6" />
               </div>
 
               <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-8 flex flex-col justify-between">
                 <div>
-                  <div className="text-6xl font-bold mb-1">104</div>
-                  <div className="text-xl opacity-75">MATCHES</div>
+                  <div className="text-6xl font-bold mb-1">{matches.length || 104}</div>
+                  <div className="text-xl opacity-75">MATCHES LOADED</div>
                 </div>
-                <div className="text-emerald-400 text-sm mt-8">{lastUpdated ? `UPDATED ${lastUpdated}` : 'AWAITING SYNC'}</div>
+                <div className="text-emerald-400 text-sm mt-8">PUBLIC API FEED • NO FAKE FALLBACK SCORES</div>
               </div>
             </div>
           )}
 
           {activeTab === 'groups' && (
-            <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-10 pointer-events-auto">
-              <h2 className="text-5xl font-bold mb-4">GROUP STAGE STANDINGS</h2>
-              {groups.length === 0 ? (
-                <EmptyState title="No group data loaded" message="The app will show groups here once the public API returns group data." />
+            <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-8 pointer-events-auto max-h-[72vh] overflow-auto">
+              <h2 className="text-5xl font-bold mb-6">GROUP STAGE STANDINGS</h2>
+
+              {standingsByGroup.length === 0 ? (
+                <EmptyState title="No standings loaded" message="The public API did not return group table data." />
               ) : (
-                <pre className="text-left whitespace-pre-wrap text-xs bg-white/5 rounded-2xl p-6 overflow-auto max-h-[55vh]">
-                  {JSON.stringify(groups, null, 2)}
-                </pre>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {standingsByGroup.map(([group, rows]) => (
+                    <div key={group} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                      <h3 className="text-2xl font-bold text-cyan-400 mb-4">Group {group}</h3>
+                      <div className="grid grid-cols-[1fr_repeat(7,2.5rem)] gap-2 text-sm">
+                        <div className="opacity-70">Team</div>
+                        {['MP', 'W', 'D', 'L', 'PTS', 'GF', 'GD'].map((header) => (
+                          <div key={header} className="text-right opacity-70">
+                            {header}
+                          </div>
+                        ))}
+
+                        {rows.map((row) => (
+                          <div key={`${group}-${row.teamId}`} className="contents">
+                            <div className="font-medium truncate">{row.teamName}</div>
+                            <div className="text-right">{row.mp}</div>
+                            <div className="text-right">{row.w}</div>
+                            <div className="text-right">{row.d}</div>
+                            <div className="text-right">{row.l}</div>
+                            <div className="text-right font-bold text-emerald-400">{row.pts}</div>
+                            <div className="text-right">{row.gf}</div>
+                            <div className="text-right">{row.gd}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}
 
           {activeTab === 'fixtures' && (
-            <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-10 pointer-events-auto">
-              <h2 className="text-5xl font-bold mb-8">FIXTURES / MATCH FEED</h2>
-              <div className="space-y-6">
-                {matches.length === 0 ? (
-                  <EmptyState title="No fixtures loaded" message="No fake scores are being shown. Check the API endpoint or add a verified data source." />
-                ) : (
-                  matches.map((match) => (
-                    <div key={match.id} className="flex items-center justify-between bg-white/5 p-6 rounded-2xl">
-                      <div className="flex-1 text-right pr-8">
+            <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-8 pointer-events-auto max-h-[72vh] overflow-auto">
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-5xl font-bold">FIXTURES / RESULTS</h2>
+                <div className="flex items-center gap-2 text-sm opacity-75">
+                  <RefreshCw className="w-4 h-4" />
+                  refreshes every 60s
+                </div>
+              </div>
+
+              {fixtureList.length === 0 ? (
+                <EmptyState title="No fixtures loaded" message="No fake scores are being shown. Check API availability or CORS." />
+              ) : (
+                <div className="space-y-4">
+                  {fixtureList.map((match) => (
+                    <div key={match.id} className="flex items-center justify-between bg-white/5 p-5 rounded-2xl">
+                      <div className="flex-1 text-right pr-6">
                         <div className="font-semibold text-xl">{match.home}</div>
                       </div>
-                      <div className="text-center px-8">
-                        <div className="text-4xl font-mono font-bold text-emerald-400">{match.score || match.time}</div>
-                        <div className="text-xs uppercase tracking-widest text-cyan-400">{match.group}</div>
+                      <div className="text-center px-6 min-w-36">
+                        <div className="text-4xl font-mono font-bold text-emerald-400">{match.score}</div>
+                        <div className="text-xs uppercase tracking-widest text-cyan-400">Group {match.group}</div>
+                        <div className="text-xs opacity-60 mt-1">{match.time}</div>
                       </div>
-                      <div className="flex-1 pl-8">
+                      <div className="flex-1 pl-6">
                         <div className="font-semibold text-xl">{match.away}</div>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {activeTab === 'bracket' && (
             <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-10 text-center pointer-events-auto">
               <h2 className="text-5xl font-bold mb-4">KNOCKOUT BRACKET</h2>
-              <p className="text-xl opacity-75">Bracket data is not available yet. No placeholder bracket is being rendered.</p>
+              <p className="text-xl opacity-75">
+                The current public feed includes group fixtures/results and standings. Knockout bracket data will appear here when the API exposes knockout matches.
+              </p>
             </div>
           )}
         </div>
