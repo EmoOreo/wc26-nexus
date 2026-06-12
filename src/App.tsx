@@ -14,9 +14,8 @@ interface Match {
 }
 
 const liveMatches: Match[] = [
-  { id: 1, home: "Mexico", away: "South Africa", score: "1-0", time: "LIVE", group: "A" },
-  { id: 2, home: "South Korea", away: "Czechia", score: "0-0", time: "45'", group: "A" },
-  { id: 3, home: "USA", away: "Wales", score: "-", time: "Upcoming", group: "B" },
+  { id: 1, home: "Mexico", away: "South Africa", score: "2-0", time: "FT", group: "A" },
+  { id: 2, home: "South Korea", away: "Czechia", score: "2-1", time: "FT", group: "A" },
 ];
 
 function Globe() {
@@ -48,25 +47,75 @@ function MatchPin({ position, match }: { position: [number, number, number]; mat
 function WC26Nexus() {
   const [activeTab, setActiveTab] = useState<'overview' | 'groups' | 'fixtures' | 'bracket'>('overview');
   const [nextMatchTime, setNextMatchTime] = useState('');
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [standings, setStandings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [liveData, setLiveData] = useState<any>(null);
 
+  // Live API Fetch from worldcup26.ir
+  useEffect(() => {
+    const fetchLiveData = async () => {
+      try {
+        setLoading(true);
+        // Fetch matches and standings from free API
+        const [matchesRes, groupsRes] = await Promise.all([
+          fetch('https://worldcup26.ir/get/games'),
+          fetch('https://worldcup26.ir/get/groups')
+        ]);
+        
+        const matchesData = await matchesRes.json();
+        const groupsData = await groupsRes.json();
+        
+        setLiveData({ matches: matchesData, groups: groupsData });
+        
+        // Update matches for display
+        if (matchesData && matchesData.length > 0) {
+          const todayMatches = matchesData.slice(0, 4).map((m: any, i: number) => ({
+            id: i,
+            home: m.home || m.team1 || 'Home',
+            away: m.away || m.team2 || 'Away',
+            score: m.score || m.result || 'VS',
+            time: m.status || m.time || 'LIVE',
+            group: m.group || 'A'
+          }));
+          setMatches(todayMatches);
+        }
+      } catch (error) {
+        console.log("API fetch failed, using fallback data", error);
+        // Keep static fallback
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLiveData();
+    const interval = setInterval(fetchLiveData, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, []);
+
+  // Dynamic Next Match Time
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      const opener = new Date(Date.UTC(2026, 5, 11, 19, 0, 0)); // June 11, 15:00 ET = 19:00 UTC
-      const diff = opener.getTime() - now.getTime();
-      
-      if (diff > 0) {
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        setNextMatchTime(`${days}d ${hours}h AWAY`);
-      } else {
+      // Dynamic - finds next match or shows live
+      if (liveData?.matches && liveData.matches.length > 0) {
         setNextMatchTime('LIVE NOW! 🔥');
+      } else {
+        const opener = new Date(Date.UTC(2026, 5, 11, 19, 0, 0));
+        const diff = opener.getTime() - now.getTime();
+        if (diff > 0) {
+          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          setNextMatchTime(`${days}d ${hours}h AWAY`);
+        } else {
+          setNextMatchTime('LIVE NOW! 🔥');
+        }
       }
     };
     updateTime();
     const interval = setInterval(updateTime, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [liveData]);
 
   return (
     <div className="min-h-screen bg-black text-white overflow-hidden">
@@ -138,7 +187,9 @@ function WC26Nexus() {
                 <div className="flex justify-between items-start mb-6">
                   <div>
                     <div className="uppercase tracking-[3px] text-xs text-cyan-400">NEXT / LIVE</div>
-                    <div className="text-4xl font-bold mt-1 group-hover:text-emerald-400 transition-colors">MEXICO vs SOUTH AFRICA</div>
+                    <div className="text-4xl font-bold mt-1 group-hover:text-emerald-400 transition-colors">
+                      {matches.length > 0 ? `${matches[0].home} vs ${matches[0].away}` : "MEXICO vs SOUTH AFRICA"}
+                    </div>
                   </div>
                   <Trophy className="w-10 h-10 text-amber-400" />
                 </div>
