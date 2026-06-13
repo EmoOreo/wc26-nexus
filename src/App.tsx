@@ -344,7 +344,7 @@ function WC26Nexus() {
 
   return (
     <div className="min-h-screen bg-black text-white overflow-hidden">
-      <div className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md border-b border-cyan-500/30 p-4 flex items-center justify-between">
+      <div className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md border-b border-cyan-500/30 p-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-emerald-400 rounded-full flex items-center justify-center">
             ⚽
@@ -355,7 +355,7 @@ function WC26Nexus() {
           </div>
         </div>
 
-        <div className="flex gap-6 text-sm">
+        <div className="flex flex-wrap gap-2 text-sm">
           {(['overview', 'groups', 'fixtures', 'bracket'] as ActiveTab[]).map((tab) => (
             <button
               key={tab}
@@ -392,7 +392,7 @@ function WC26Nexus() {
       </div>
 
       <div className="absolute inset-0 z-10 pointer-events-none">
-        <div className="max-w-7xl mx-auto pt-24 px-6">
+        <div className="max-w-7xl mx-auto pt-36 md:pt-28 px-4 md:px-6 pb-28">
           {activeTab === 'overview' && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pointer-events-auto">
               <div
@@ -402,13 +402,13 @@ function WC26Nexus() {
                 <div className="flex justify-between items-start mb-6">
                   <div>
                     <div className="uppercase tracking-[3px] text-xs text-cyan-400">NEXT / FEED</div>
-                    <div className="text-4xl font-bold mt-1 group-hover:text-emerald-400 transition-colors">
+                    <div className="text-2xl md:text-4xl font-bold mt-1 group-hover:text-emerald-400 transition-colors">
                       {nextMatch ? `${nextMatch.home} vs ${nextMatch.away}` : 'NO MATCH DATA'}
                     </div>
                   </div>
                   <Trophy className="w-10 h-10 text-amber-400" />
                 </div>
-                <div className="text-6xl font-mono font-bold text-emerald-400 mb-2">{nextMatchTime}</div>
+                <div className="text-4xl md:text-6xl font-mono font-bold text-emerald-400 mb-2">{nextMatchTime}</div>
                 <div className="text-sm opacity-75">
                   {nextMatch ? `${nextMatch.venue} • Group ${nextMatch.group} • Matchday ${nextMatch.matchday}` : 'Waiting for public API data'}
                 </div>
@@ -432,7 +432,7 @@ function WC26Nexus() {
 
           {activeTab === 'groups' && (
             <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-8 pointer-events-auto max-h-[72vh] overflow-auto">
-              <h2 className="text-5xl font-bold mb-6">GROUP STAGE STANDINGS</h2>
+              <h2 className="text-3xl md:text-5xl font-bold mb-6">GROUP STAGE STANDINGS</h2>
 
               {standingsByGroup.length === 0 ? (
                 <EmptyState title="No standings loaded" message="The public API did not return group table data." />
@@ -441,26 +441,33 @@ function WC26Nexus() {
                   {standingsByGroup.map(([group, rows]) => (
                     <div key={group} className="bg-white/5 border border-white/10 rounded-2xl p-5">
                       <h3 className="text-2xl font-bold text-cyan-400 mb-4">Group {group}</h3>
-                      <div className="grid grid-cols-[1fr_repeat(7,2.5rem)] gap-2 text-sm">
-                        <div className="opacity-70">Team</div>
-                        {['MP', 'W', 'D', 'L', 'PTS', 'GF', 'GD'].map((header) => (
-                          <div key={header} className="text-right opacity-70">
-                            {header}
-                          </div>
-                        ))}
-
-                        {rows.map((row) => (
-                          <div key={`${group}-${row.teamId}`} className="contents">
-                            <div className="font-medium truncate">{row.teamName}</div>
-                            <div className="text-right">{row.mp}</div>
-                            <div className="text-right">{row.w}</div>
-                            <div className="text-right">{row.d}</div>
-                            <div className="text-right">{row.l}</div>
-                            <div className="text-right font-bold text-emerald-400">{row.pts}</div>
-                            <div className="text-right">{row.gf}</div>
-                            <div className="text-right">{row.gd}</div>
-                          </div>
-                        ))}
+                      <div className="overflow-x-auto">
+                        <table className="w-full table-auto border-collapse text-sm">
+                          <thead>
+                            <tr className="border-b border-white/10 text-white/60">
+                              <th className="py-2 pr-3 text-left font-medium">Team</th>
+                              {['MP', 'W', 'D', 'L', 'PTS', 'GF', 'GD'].map((header) => (
+                                <th key={header} className="py-2 px-2 text-right font-medium">
+                                  {header}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((row) => (
+                              <tr key={`${group}-${row.teamId}`} className="border-b border-white/5 last:border-b-0">
+                                <td className="py-2 pr-3 text-left font-medium whitespace-nowrap">{row.teamName}</td>
+                                <td className="py-2 px-2 text-right">{row.mp}</td>
+                                <td className="py-2 px-2 text-right">{row.w}</td>
+                                <td className="py-2 px-2 text-right">{row.d}</td>
+                                <td className="py-2 px-2 text-right">{row.l}</td>
+                                <td className="py-2 px-2 text-right font-bold text-emerald-400">{row.pts}</td>
+                                <td className="py-2 px-2 text-right">{row.gf}</td>
+                                <td className="py-2 px-2 text-right">{row.gd}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
                   ))}
@@ -471,8 +478,8 @@ function WC26Nexus() {
 
           {activeTab === 'fixtures' && (
             <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-8 pointer-events-auto max-h-[72vh] overflow-auto">
-              <div className="flex items-center justify-between mb-8">
-                <h2 className="text-5xl font-bold">FIXTURES / RESULTS</h2>
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+                <h2 className="text-3xl md:text-5xl font-bold">FIXTURES / RESULTS</h2>
                 <div className="flex items-center gap-2 text-sm opacity-75">
                   <RefreshCw className="w-4 h-4" />
                   refreshes every 60s
@@ -484,16 +491,16 @@ function WC26Nexus() {
               ) : (
                 <div className="space-y-4">
                   {fixtureList.map((match) => (
-                    <div key={match.id} className="flex items-center justify-between bg-white/5 p-5 rounded-2xl">
-                      <div className="flex-1 text-right pr-6">
+                    <div key={match.id} className="flex flex-col gap-3 bg-white/5 p-5 rounded-2xl md:flex-row md:items-center md:justify-between">
+                      <div className="w-full text-center md:flex-1 md:text-right md:pr-6">
                         <div className="font-semibold text-xl">{match.home}</div>
                       </div>
-                      <div className="text-center px-6 min-w-36">
+                      <div className="text-center px-6 md:min-w-36">
                         <div className="text-4xl font-mono font-bold text-emerald-400">{match.score}</div>
                         <div className="text-xs uppercase tracking-widest text-cyan-400">Group {match.group}</div>
                         <div className="text-xs opacity-60 mt-1">{match.time}</div>
                       </div>
-                      <div className="flex-1 pl-6">
+                      <div className="w-full text-center md:flex-1 md:text-left md:pl-6">
                         <div className="font-semibold text-xl">{match.away}</div>
                       </div>
                     </div>
@@ -514,7 +521,7 @@ function WC26Nexus() {
         </div>
       </div>
 
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-black/80 backdrop-blur-md border border-cyan-500/30 px-8 py-3 rounded-full flex items-center gap-8 text-sm">
+      <div className="fixed bottom-4 left-1/2 w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 z-50 bg-black/80 backdrop-blur-md border border-cyan-500/30 px-5 py-3 rounded-2xl md:rounded-full flex flex-wrap items-center justify-center gap-4 md:gap-8 text-xs md:text-sm">
         <div className="flex items-center gap-2">
           <MapPin className="w-4 h-4" /> 16 Venues • 3 Countries
         </div>
