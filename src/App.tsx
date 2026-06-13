@@ -188,19 +188,33 @@ function normalizeStandings(groups: RawGroup[], teamNames: Map<string, string>):
 
 function Globe() {
   return (
-    <group scale={1.28}>
+    <group scale={1.72}>
       <mesh>
-        <sphereGeometry args={[3.35, 96, 96]} />
-        <meshStandardMaterial color="#081f3d" emissive="#1e40af" metalness={0.85} roughness={0.18} />
+        <sphereGeometry args={[3.35, 128, 128]} />
+        <meshStandardMaterial color="#071a35" emissive="#1e3a8a" metalness={0.9} roughness={0.16} />
       </mesh>
       <mesh scale={1.045}>
-        <sphereGeometry args={[3.35, 96, 96]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.13} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
+        <sphereGeometry args={[3.35, 128, 128]} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.2} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
       </mesh>
-      <mesh scale={1.12}>
-        <sphereGeometry args={[3.35, 96, 96]} />
-        <meshBasicMaterial color="#10b981" transparent opacity={0.045} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
+      <mesh scale={1.14}>
+        <sphereGeometry args={[3.35, 128, 128]} />
+        <meshBasicMaterial color="#67e8f9" transparent opacity={0.085} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
       </mesh>
+      <mesh scale={1.25}>
+        <sphereGeometry args={[3.35, 96, 96]} />
+        <meshBasicMaterial color="#10b981" transparent opacity={0.04} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
+      </mesh>
+      <group rotation={[Math.PI / 2.25, 0.25, 0.18]}>
+        <mesh>
+          <torusGeometry args={[3.9, 0.015, 8, 160]} />
+          <meshBasicMaterial color="#22d3ee" transparent opacity={0.32} blending={THREE.AdditiveBlending} />
+        </mesh>
+        <mesh rotation={[0.6, 0.05, 0.4]}>
+          <torusGeometry args={[4.45, 0.012, 8, 160]} />
+          <meshBasicMaterial color="#10b981" transparent opacity={0.18} blending={THREE.AdditiveBlending} />
+        </mesh>
+      </group>
     </group>
   );
 }
@@ -208,8 +222,8 @@ function Globe() {
 function getVenuePosition(match: Match, index: number): [number, number, number] {
   const seed = toNumber(match.stadiumId, index + 1);
   const angle = seed * 1.618;
-  const height = ((seed % 7) - 3) * 0.38;
-  return [Math.sin(angle) * 5.95, height * 1.15, Math.cos(angle) * 5.95];
+  const height = ((seed % 7) - 3) * 0.42;
+  return [Math.sin(angle) * 6.75, height * 1.15, Math.cos(angle) * 6.75];
 }
 
 function isMatchLive(match: Match): boolean {
@@ -261,12 +275,16 @@ function EnergyArc({ start, end, intensity }: { start: [number, number, number];
   return (
     <group>
       <mesh>
-        <tubeGeometry args={[curve, 80, 0.025 + intensity * 0.004, 8, false]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.34 + intensity * 0.025} blending={THREE.AdditiveBlending} />
+        <tubeGeometry args={[curve, 96, 0.045 + intensity * 0.006, 10, false]} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.52 + intensity * 0.035} blending={THREE.AdditiveBlending} />
+      </mesh>
+      <mesh>
+        <tubeGeometry args={[curve, 96, 0.012 + intensity * 0.002, 8, false]} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.38} blending={THREE.AdditiveBlending} />
       </mesh>
       <mesh ref={pulseRef}>
-        <sphereGeometry args={[0.12 + intensity * 0.01]} />
-        <meshBasicMaterial color="#67e8f9" transparent opacity={0.95} blending={THREE.AdditiveBlending} />
+        <sphereGeometry args={[0.18 + intensity * 0.014]} />
+        <meshBasicMaterial color="#a7f3d0" transparent opacity={1} blending={THREE.AdditiveBlending} />
       </mesh>
     </group>
   );
@@ -276,13 +294,13 @@ function HologramCard({ match, position }: { match: Match; position: [number, nu
   const live = isMatchLive(match);
 
   return (
-    <Html position={position} center distanceFactor={7.2} transform>
-      <div className="min-w-64 rounded-3xl border border-cyan-300/70 bg-black/75 px-6 py-4 text-center text-white shadow-[0_0_55px_rgba(34,211,238,0.45)] backdrop-blur-xl transition-all duration-500">
-        <div className="mb-1 text-xs uppercase tracking-[0.32em] text-cyan-300">{live ? 'Live signal' : match.finished ? 'Final' : 'Next feed'}</div>
-        <div className="text-base font-semibold leading-tight">{match.home}</div>
-        <div className="font-mono text-4xl font-bold text-emerald-300 transition-all duration-500">{match.score}</div>
-        <div className="text-base font-semibold leading-tight">{match.away}</div>
-        <div className="mt-2 text-xs uppercase tracking-widest text-white/60">Group {match.group} • {match.time}</div>
+    <Html position={position} center distanceFactor={5.1} transform occlude={false}>
+      <div className="min-w-72 rounded-3xl border border-cyan-200/80 bg-black/80 px-7 py-5 text-center text-white shadow-[0_0_75px_rgba(34,211,238,0.62)] backdrop-blur-xl transition-all duration-500">
+        <div className="mb-2 text-xs uppercase tracking-[0.36em] text-cyan-200">{live ? 'Live signal' : match.finished ? 'Final' : 'Orbital feed'}</div>
+        <div className="text-lg font-semibold leading-tight">{match.home}</div>
+        <div className="font-mono text-5xl font-bold text-emerald-300 transition-all duration-500 drop-shadow-[0_0_18px_rgba(110,231,183,0.9)]">{match.score}</div>
+        <div className="text-lg font-semibold leading-tight">{match.away}</div>
+        <div className="mt-3 text-xs uppercase tracking-widest text-white/60">Group {match.group} • {match.time}</div>
       </div>
     </Html>
   );
@@ -481,9 +499,9 @@ function WC26Nexus() {
       </div>
 
       <div className="absolute inset-0 z-0">
-        <Canvas camera={{ position: [0, 0, 14], fov: 40 }}>
-          <ambientLight intensity={0.42 + activityScore * 0.035} />
-          <pointLight position={[10, 10, 10]} intensity={1.6 + activityScore * 0.12} />
+        <Canvas camera={{ position: [0, 0, 12.2], fov: 36 }}>
+          <ambientLight intensity={0.55 + activityScore * 0.045} />
+          <pointLight position={[10, 10, 10]} intensity={2.3 + activityScore * 0.18} />
           <Globe />
           {venuePositions.map(({ match, position }) => (
             <MatchPin key={match.id} position={position} match={match} />
@@ -494,10 +512,10 @@ function WC26Nexus() {
             return <EnergyArc key={`arc-${index}`} start={position} end={next.position} intensity={activityScore} />;
           })}
           {liveOrFeaturedMatches.map((match, index) => (
-            <HologramCard key={`holo-${match.id}`} match={match} position={[index * 3.4 - 5.1, 4.3 - (index % 2) * 0.85, -1.4]} />
+            <HologramCard key={`holo-${match.id}`} match={match} position={[index % 2 === 0 ? -7.8 : 7.8, 2.35 - Math.floor(index / 2) * 2.95, -0.65]} />
           ))}
-          <Stars key={starCount} radius={300} depth={60} count={starCount} factor={6 + activityScore * 0.25} saturation={0} fade speed={starSpeed} />
-          <OrbitControls enablePan={false} enableZoom autoRotate autoRotateSpeed={0.28 + activityScore * 0.025} />
+          <Stars key={starCount} radius={300} depth={60} count={starCount + 600} factor={8 + activityScore * 0.35} saturation={0} fade speed={starSpeed} />
+          <OrbitControls enablePan={false} enableZoom autoRotate autoRotateSpeed={0.34 + activityScore * 0.035} />
           <Environment preset="night" />
         </Canvas>
       </div>
@@ -505,38 +523,67 @@ function WC26Nexus() {
       <div className="absolute inset-0 z-10 pointer-events-none">
         <div className="max-w-7xl mx-auto pt-36 md:pt-28 px-4 md:px-6 pb-28">
           {activeTab === 'overview' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pointer-events-auto">
-              <div
-                onClick={() => setActiveTab('fixtures')}
-                className="bg-black/70 backdrop-blur-xl border border-cyan-400/50 rounded-3xl p-8 hover:border-emerald-400 cursor-pointer transition-all group"
-              >
-                <div className="flex justify-between items-start mb-6">
-                  <div>
-                    <div className="uppercase tracking-[3px] text-xs text-cyan-400">NEXT / FEED</div>
-                    <div className="text-2xl md:text-4xl font-bold mt-1 group-hover:text-emerald-400 transition-colors">
-                      {nextMatch ? `${nextMatch.home} vs ${nextMatch.away}` : 'NO MATCH DATA'}
+            <div className="pointer-events-auto grid min-h-[calc(100vh-13rem)] grid-cols-1 items-center gap-6 lg:grid-cols-[330px_minmax(320px,1fr)_330px]">
+              <div className="space-y-4 self-center">
+                <div
+                  onClick={() => setActiveTab('fixtures')}
+                  className="bg-black/72 backdrop-blur-xl border border-cyan-300/60 rounded-3xl p-6 hover:border-emerald-300 cursor-pointer transition-all group shadow-[0_0_45px_rgba(34,211,238,0.22)]"
+                >
+                  <div className="flex justify-between items-start mb-5">
+                    <div>
+                      <div className="uppercase tracking-[3px] text-xs text-cyan-300">NEXT / FEED</div>
+                      <div className="text-2xl font-bold mt-1 group-hover:text-emerald-300 transition-colors">
+                        {nextMatch ? `${nextMatch.home} vs ${nextMatch.away}` : 'NO MATCH DATA'}
+                      </div>
                     </div>
+                    <Trophy className="w-9 h-9 text-amber-300" />
                   </div>
-                  <Trophy className="w-10 h-10 text-amber-400" />
+                  <div className="text-5xl font-mono font-bold text-emerald-300 mb-2 drop-shadow-[0_0_20px_rgba(110,231,183,0.55)]">{nextMatchTime}</div>
+                  <div className="text-sm opacity-75">
+                    {nextMatch ? `${nextMatch.venue} • Group ${nextMatch.group} • Matchday ${nextMatch.matchday}` : 'Waiting for public API data'}
+                  </div>
                 </div>
-                <div className="text-4xl md:text-6xl font-mono font-bold text-emerald-400 mb-2">{nextMatchTime}</div>
-                <div className="text-sm opacity-75">
-                  {nextMatch ? `${nextMatch.venue} • Group ${nextMatch.group} • Matchday ${nextMatch.matchday}` : 'Waiting for public API data'}
+
+                <div className="bg-black/66 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-[0_0_35px_rgba(16,185,129,0.14)]">
+                  <div className="uppercase tracking-[3px] text-xs text-cyan-300">Tournament Signal</div>
+                  <div className="mt-2 text-5xl font-bold text-white">{activityScore.toFixed(1)}</div>
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-emerald-300" style={{ width: `${Math.min(100, activityScore * 10)}%` }} />
+                  </div>
+                  <div className="mt-3 text-xs uppercase tracking-widest text-white/55">Starfield + arc intensity</div>
                 </div>
               </div>
 
-              <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-8">
-                <div className="text-6xl font-bold mb-1">48</div>
-                <div className="text-xl opacity-75">TEAMS</div>
-                <div className="h-1.5 bg-gradient-to-r from-cyan-400 to-emerald-400 rounded mt-6" />
-              </div>
+              <div className="hidden lg:block min-h-[560px]" aria-hidden="true" />
 
-              <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-8 flex flex-col justify-between">
-                <div>
-                  <div className="text-6xl font-bold mb-1">{matches.length || 104}</div>
-                  <div className="text-xl opacity-75">MATCHES LOADED</div>
+              <div className="space-y-4 self-center">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-black/66 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
+                    <div className="text-5xl font-bold mb-1">48</div>
+                    <div className="text-sm uppercase tracking-widest opacity-75">Teams</div>
+                  </div>
+                  <div className="bg-black/66 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
+                    <div className="text-5xl font-bold mb-1">{matches.length || 104}</div>
+                    <div className="text-sm uppercase tracking-widest opacity-75">Matches loaded</div>
+                  </div>
                 </div>
-                <div className="text-emerald-400 text-sm mt-8">DYNAMIC GLOBE 0.8.2.1 • SIGNAL {activityScore.toFixed(1)}</div>
+
+                <div className="bg-black/72 backdrop-blur-xl border border-cyan-300/30 rounded-3xl p-6 shadow-[0_0_45px_rgba(34,211,238,0.16)]">
+                  <div className="uppercase tracking-[3px] text-xs text-cyan-300 mb-4">Orbital Match Feed</div>
+                  <div className="space-y-3">
+                    {(liveOrFeaturedMatches.length ? liveOrFeaturedMatches : fixtureList.slice(0, 3)).map((match) => (
+                      <div key={`overview-${match.id}`} className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold">{match.home} vs {match.away}</div>
+                          <div className="text-xs uppercase tracking-widest text-white/50">Group {match.group} • {match.time}</div>
+                        </div>
+                        <div className="font-mono text-xl font-bold text-emerald-300">{match.score}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="text-center text-xs uppercase tracking-[0.26em] text-emerald-300">Cinematic globe 0.8.2.2 • no fake fallback scores</div>
               </div>
             </div>
           )}
