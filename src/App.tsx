@@ -188,14 +188,18 @@ function normalizeStandings(groups: RawGroup[], teamNames: Map<string, string>):
 
 function Globe() {
   return (
-    <group>
+    <group scale={1.28}>
       <mesh>
-        <sphereGeometry args={[3, 64, 64]} />
-        <meshStandardMaterial color="#0a2540" emissive="#1e3a8a" metalness={0.8} roughness={0.2} />
+        <sphereGeometry args={[3.35, 96, 96]} />
+        <meshStandardMaterial color="#081f3d" emissive="#1e40af" metalness={0.85} roughness={0.18} />
       </mesh>
-      <mesh scale={1.04}>
-        <sphereGeometry args={[3, 64, 64]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.08} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
+      <mesh scale={1.045}>
+        <sphereGeometry args={[3.35, 96, 96]} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.13} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
+      </mesh>
+      <mesh scale={1.12}>
+        <sphereGeometry args={[3.35, 96, 96]} />
+        <meshBasicMaterial color="#10b981" transparent opacity={0.045} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
       </mesh>
     </group>
   );
@@ -205,7 +209,7 @@ function getVenuePosition(match: Match, index: number): [number, number, number]
   const seed = toNumber(match.stadiumId, index + 1);
   const angle = seed * 1.618;
   const height = ((seed % 7) - 3) * 0.38;
-  return [Math.sin(angle) * 4.35, height, Math.cos(angle) * 4.35];
+  return [Math.sin(angle) * 5.95, height * 1.15, Math.cos(angle) * 5.95];
 }
 
 function isMatchLive(match: Match): boolean {
@@ -216,25 +220,25 @@ function isMatchLive(match: Match): boolean {
 function MatchPin({ position, match }: { position: [number, number, number]; match: Match }) {
   const groupRef = useRef<THREE.Group>(null);
   const live = isMatchLive(match);
-  const goalGlow = Math.min(match.totalGoals, 6) * 0.08;
+  const goalGlow = Math.min(match.totalGoals, 6) * 0.12;
 
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
-    const pulse = live ? 1 + Math.sin(clock.elapsedTime * 5) * 0.32 : 1 + Math.sin(clock.elapsedTime * 1.5) * 0.08;
+    const pulse = live ? 1 + Math.sin(clock.elapsedTime * 5) * 0.44 : 1 + Math.sin(clock.elapsedTime * 1.5) * 0.12;
     groupRef.current.scale.setScalar(pulse + goalGlow);
   });
 
   return (
     <group ref={groupRef} position={position}>
       <mesh>
-        <sphereGeometry args={[0.14]} />
+        <sphereGeometry args={[0.22]} />
         <meshStandardMaterial color={live ? '#22c55e' : match.finished ? '#38bdf8' : '#06b6d4'} emissive={live ? '#22c55e' : '#06b6d4'} />
       </mesh>
       <mesh>
-        <sphereGeometry args={[0.32 + goalGlow]} />
-        <meshBasicMaterial color={live ? '#22c55e' : '#0891b2'} transparent opacity={live ? 0.22 : 0.1} blending={THREE.AdditiveBlending} />
+        <sphereGeometry args={[0.56 + goalGlow]} />
+        <meshBasicMaterial color={live ? '#22c55e' : '#0891b2'} transparent opacity={live ? 0.38 : 0.18} blending={THREE.AdditiveBlending} />
       </mesh>
-      <pointLight color={live ? '#22c55e' : '#06b6d4'} intensity={live ? 5 : 1.7 + match.totalGoals * 0.25} distance={live ? 4 : 2.5} />
+      <pointLight color={live ? '#22c55e' : '#06b6d4'} intensity={live ? 9 : 3.2 + match.totalGoals * 0.45} distance={live ? 7 : 4.5} />
     </group>
   );
 }
@@ -244,7 +248,7 @@ function EnergyArc({ start, end, intensity }: { start: [number, number, number];
   const curve = useMemo(() => {
     const startPoint = new THREE.Vector3(...start);
     const endPoint = new THREE.Vector3(...end);
-    const midPoint = startPoint.clone().add(endPoint).multiplyScalar(0.5).normalize().multiplyScalar(5.4 + intensity * 0.18);
+    const midPoint = startPoint.clone().add(endPoint).multiplyScalar(0.5).normalize().multiplyScalar(7.4 + intensity * 0.28);
     return new THREE.CatmullRomCurve3([startPoint, midPoint, endPoint]);
   }, [start, end, intensity]);
 
@@ -257,12 +261,12 @@ function EnergyArc({ start, end, intensity }: { start: [number, number, number];
   return (
     <group>
       <mesh>
-        <tubeGeometry args={[curve, 80, 0.01 + intensity * 0.002, 8, false]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.16 + intensity * 0.015} blending={THREE.AdditiveBlending} />
+        <tubeGeometry args={[curve, 80, 0.025 + intensity * 0.004, 8, false]} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.34 + intensity * 0.025} blending={THREE.AdditiveBlending} />
       </mesh>
       <mesh ref={pulseRef}>
-        <sphereGeometry args={[0.055 + intensity * 0.006]} />
-        <meshBasicMaterial color="#67e8f9" transparent opacity={0.82} blending={THREE.AdditiveBlending} />
+        <sphereGeometry args={[0.12 + intensity * 0.01]} />
+        <meshBasicMaterial color="#67e8f9" transparent opacity={0.95} blending={THREE.AdditiveBlending} />
       </mesh>
     </group>
   );
@@ -272,13 +276,13 @@ function HologramCard({ match, position }: { match: Match; position: [number, nu
   const live = isMatchLive(match);
 
   return (
-    <Html position={position} center distanceFactor={10} transform>
-      <div className="min-w-44 rounded-2xl border border-cyan-300/50 bg-black/70 px-4 py-3 text-center text-white shadow-[0_0_30px_rgba(34,211,238,0.25)] backdrop-blur-md transition-all duration-500">
-        <div className="mb-1 text-[10px] uppercase tracking-[0.28em] text-cyan-300">{live ? 'Live signal' : match.finished ? 'Final' : 'Next feed'}</div>
-        <div className="text-sm font-semibold leading-tight">{match.home}</div>
-        <div className="font-mono text-2xl font-bold text-emerald-300 transition-all duration-500">{match.score}</div>
-        <div className="text-sm font-semibold leading-tight">{match.away}</div>
-        <div className="mt-1 text-[10px] uppercase tracking-widest text-white/60">Group {match.group} • {match.time}</div>
+    <Html position={position} center distanceFactor={7.2} transform>
+      <div className="min-w-64 rounded-3xl border border-cyan-300/70 bg-black/75 px-6 py-4 text-center text-white shadow-[0_0_55px_rgba(34,211,238,0.45)] backdrop-blur-xl transition-all duration-500">
+        <div className="mb-1 text-xs uppercase tracking-[0.32em] text-cyan-300">{live ? 'Live signal' : match.finished ? 'Final' : 'Next feed'}</div>
+        <div className="text-base font-semibold leading-tight">{match.home}</div>
+        <div className="font-mono text-4xl font-bold text-emerald-300 transition-all duration-500">{match.score}</div>
+        <div className="text-base font-semibold leading-tight">{match.away}</div>
+        <div className="mt-2 text-xs uppercase tracking-widest text-white/60">Group {match.group} • {match.time}</div>
       </div>
     </Html>
   );
@@ -352,8 +356,8 @@ function WC26Nexus() {
     return Math.min(10, liveCount * 3 + goals * 0.15);
   }, [fixtureList]);
 
-  const starCount = Math.round(800 + activityScore * 80);
-  const starSpeed = 0.35 + activityScore * 0.08;
+  const starCount = Math.round(1300 + activityScore * 120);
+  const starSpeed = 0.5 + activityScore * 0.1;
 
   const standingsByGroup = useMemo(() => {
     const grouped = new Map<string, GroupStanding[]>();
@@ -477,9 +481,9 @@ function WC26Nexus() {
       </div>
 
       <div className="absolute inset-0 z-0">
-        <Canvas camera={{ position: [0, 0, 12], fov: 45 }}>
-          <ambientLight intensity={0.3 + activityScore * 0.025} />
-          <pointLight position={[10, 10, 10]} intensity={1 + activityScore * 0.08} />
+        <Canvas camera={{ position: [0, 0, 14], fov: 40 }}>
+          <ambientLight intensity={0.42 + activityScore * 0.035} />
+          <pointLight position={[10, 10, 10]} intensity={1.6 + activityScore * 0.12} />
           <Globe />
           {venuePositions.map(({ match, position }) => (
             <MatchPin key={match.id} position={position} match={match} />
@@ -490,10 +494,10 @@ function WC26Nexus() {
             return <EnergyArc key={`arc-${index}`} start={position} end={next.position} intensity={activityScore} />;
           })}
           {liveOrFeaturedMatches.map((match, index) => (
-            <HologramCard key={`holo-${match.id}`} match={match} position={[index * 2.2 - 3.3, 2.9 - (index % 2) * 0.55, -0.6]} />
+            <HologramCard key={`holo-${match.id}`} match={match} position={[index * 3.4 - 5.1, 4.3 - (index % 2) * 0.85, -1.4]} />
           ))}
-          <Stars key={starCount} radius={300} depth={60} count={starCount} factor={4 + activityScore * 0.18} saturation={0} fade speed={starSpeed} />
-          <OrbitControls enablePan={false} enableZoom autoRotate autoRotateSpeed={0.2 + activityScore * 0.02} />
+          <Stars key={starCount} radius={300} depth={60} count={starCount} factor={6 + activityScore * 0.25} saturation={0} fade speed={starSpeed} />
+          <OrbitControls enablePan={false} enableZoom autoRotate autoRotateSpeed={0.28 + activityScore * 0.025} />
           <Environment preset="night" />
         </Canvas>
       </div>
@@ -532,7 +536,7 @@ function WC26Nexus() {
                   <div className="text-6xl font-bold mb-1">{matches.length || 104}</div>
                   <div className="text-xl opacity-75">MATCHES LOADED</div>
                 </div>
-                <div className="text-emerald-400 text-sm mt-8">DYNAMIC GLOBE 0.8.2 • SIGNAL {activityScore.toFixed(1)}</div>
+                <div className="text-emerald-400 text-sm mt-8">DYNAMIC GLOBE 0.8.2.1 • SIGNAL {activityScore.toFixed(1)}</div>
               </div>
             </div>
           )}
