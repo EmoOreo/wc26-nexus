@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Html, OrbitControls, Stars, Environment } from '@react-three/drei';
-import { Trophy, MapPin, Play, WifiOff, RefreshCw } from 'lucide-react';
+import { Activity, Newspaper, Play, RefreshCw, Shield, Trophy, WifiOff } from 'lucide-react';
 import * as THREE from 'three';
 
-type ActiveTab = 'overview' | 'groups' | 'fixtures' | 'bracket';
 type DataStatus = 'loading' | 'public-api' | 'no-data' | 'api-error';
 
 interface RawGame {
@@ -48,15 +47,16 @@ interface Match {
   id: number;
   home: string;
   away: string;
+  homeCode: string;
+  awayCode: string;
   score: string;
   time: string;
   group: string;
   matchday: string;
   venue: string;
-  stadiumId: string;
   finished: boolean;
-  totalGoals: number;
   sortTime: number;
+  goals: number;
 }
 
 interface GroupStanding {
@@ -73,8 +73,23 @@ interface GroupStanding {
   gd: number;
 }
 
+interface NewsItem {
+  title: string;
+  source?: string;
+  url?: string;
+  published?: string;
+}
+
 const WORLD_CUP_OPENER_UTC = Date.UTC(2026, 5, 11, 19, 0, 0);
 const API_BASE = import.meta.env.VITE_WC26_API_URL || 'https://worldcup26.ir';
+const MATCHIQ_BASE = import.meta.env.VITE_MATCHIQ_API_URL || 'https://matchiq-api-1sye.onrender.com';
+
+const glass: React.CSSProperties = {
+  background: 'linear-gradient(135deg, rgba(16, 24, 40, 0.72), rgba(5, 24, 28, 0.62))',
+  border: '1px solid rgba(103, 232, 249, 0.28)',
+  boxShadow: '0 0 42px rgba(34, 211, 238, 0.12), inset 0 1px 0 rgba(255,255,255,0.08)',
+  backdropFilter: 'blur(18px)',
+};
 
 function asArray<T>(data: unknown, key: string): T[] {
   if (Array.isArray(data)) return data as T[];
@@ -125,25 +140,36 @@ function formatMatchTime(value: unknown): string {
   });
 }
 
+function shortCode(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((word) => word[0])
+    .join('')
+    .slice(0, 3)
+    .toUpperCase();
+}
+
 function normalizeMatch(raw: RawGame, index: number): Match {
   const finished = isFinished(raw.finished);
   const homeScore = toNumber(raw.home_score);
   const awayScore = toNumber(raw.away_score);
-  const score = finished ? `${homeScore}-${awayScore}` : 'VS';
+  const home = String(raw.home_team_name_en || raw.home || raw.team1 || 'TBD');
+  const away = String(raw.away_team_name_en || raw.away || raw.team2 || 'TBD');
 
   return {
     id: toNumber(raw.id, index + 1),
-    home: String(raw.home_team_name_en || raw.home || raw.team1 || 'TBD'),
-    away: String(raw.away_team_name_en || raw.away || raw.team2 || 'TBD'),
-    score,
+    home,
+    away,
+    homeCode: shortCode(home),
+    awayCode: shortCode(away),
+    score: finished ? `${homeScore}-${awayScore}` : 'VS',
     time: finished ? 'FT' : formatMatchTime(raw.local_date || raw.time_elapsed),
     group: String(raw.group || '-'),
     matchday: String(raw.matchday || '-'),
     venue: raw.stadium_id ? `Stadium ${raw.stadium_id}` : 'Venue TBD',
-    stadiumId: raw.stadium_id ? String(raw.stadium_id) : 'unknown',
     finished,
-    totalGoals: homeScore + awayScore,
     sortTime: parseLocalDate(raw.local_date),
+    goals: homeScore + awayScore,
   };
 }
 
@@ -151,12 +177,8 @@ function buildTeamNameMap(games: RawGame[]): Map<string, string> {
   const teamNames = new Map<string, string>();
 
   games.forEach((game) => {
-    if (game.home_team_id && game.home_team_name_en) {
-      teamNames.set(String(game.home_team_id), game.home_team_name_en);
-    }
-    if (game.away_team_id && game.away_team_name_en) {
-      teamNames.set(String(game.away_team_id), game.away_team_name_en);
-    }
+    if (game.home_team_id && game.home_team_name_en) teamNames.set(String(game.home_team_id), game.home_team_name_en);
+    if (game.away_team_id && game.away_team_name_en) teamNames.set(String(game.away_team_id), game.away_team_name_en);
   });
 
   return teamNames;
@@ -187,229 +209,257 @@ function normalizeStandings(groups: RawGroup[], teamNames: Map<string, string>):
 }
 
 function Globe() {
-  return (
-    <group scale={1.72}>
-      <mesh>
-        <sphereGeometry args={[3.35, 128, 128]} />
-        <meshStandardMaterial color="#071a35" emissive="#1e3a8a" metalness={0.9} roughness={0.16} />
-      </mesh>
-      <mesh scale={1.045}>
-        <sphereGeometry args={[3.35, 128, 128]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.2} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
-      </mesh>
-      <mesh scale={1.14}>
-        <sphereGeometry args={[3.35, 128, 128]} />
-        <meshBasicMaterial color="#67e8f9" transparent opacity={0.085} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
-      </mesh>
-      <mesh scale={1.25}>
-        <sphereGeometry args={[3.35, 96, 96]} />
-        <meshBasicMaterial color="#10b981" transparent opacity={0.04} blending={THREE.AdditiveBlending} side={THREE.BackSide} />
-      </mesh>
-      <group rotation={[Math.PI / 2.25, 0.25, 0.18]}>
-        <mesh>
-          <torusGeometry args={[3.9, 0.015, 8, 160]} />
-          <meshBasicMaterial color="#22d3ee" transparent opacity={0.32} blending={THREE.AdditiveBlending} />
-        </mesh>
-        <mesh rotation={[0.6, 0.05, 0.4]}>
-          <torusGeometry args={[4.45, 0.012, 8, 160]} />
-          <meshBasicMaterial color="#10b981" transparent opacity={0.18} blending={THREE.AdditiveBlending} />
-        </mesh>
-      </group>
-    </group>
-  );
-}
+  const ref = useRef<THREE.Mesh>(null);
 
-function getVenuePosition(match: Match, index: number): [number, number, number] {
-  const seed = toNumber(match.stadiumId, index + 1);
-  const angle = seed * 1.618;
-  const height = ((seed % 7) - 3) * 0.42;
-  return [Math.sin(angle) * 6.75, height * 1.15, Math.cos(angle) * 6.75];
-}
-
-function isMatchLive(match: Match): boolean {
-  const now = Date.now();
-  return !match.finished && match.sortTime !== Number.MAX_SAFE_INTEGER && match.sortTime <= now;
-}
-
-function MatchPin({ position, match }: { position: [number, number, number]; match: Match }) {
-  const groupRef = useRef<THREE.Group>(null);
-  const live = isMatchLive(match);
-  const goalGlow = Math.min(match.totalGoals, 6) * 0.12;
-
-  useFrame(({ clock }) => {
-    if (!groupRef.current) return;
-    const pulse = live ? 1 + Math.sin(clock.elapsedTime * 5) * 0.44 : 1 + Math.sin(clock.elapsedTime * 1.5) * 0.12;
-    groupRef.current.scale.setScalar(pulse + goalGlow);
-  });
-
-  return (
-    <group ref={groupRef} position={position}>
-      <mesh>
-        <sphereGeometry args={[0.22]} />
-        <meshStandardMaterial color={live ? '#22c55e' : match.finished ? '#38bdf8' : '#06b6d4'} emissive={live ? '#22c55e' : '#06b6d4'} />
-      </mesh>
-      <mesh>
-        <sphereGeometry args={[0.56 + goalGlow]} />
-        <meshBasicMaterial color={live ? '#22c55e' : '#0891b2'} transparent opacity={live ? 0.38 : 0.18} blending={THREE.AdditiveBlending} />
-      </mesh>
-      <pointLight color={live ? '#22c55e' : '#06b6d4'} intensity={live ? 9 : 3.2 + match.totalGoals * 0.45} distance={live ? 7 : 4.5} />
-    </group>
-  );
-}
-
-function EnergyArc({ start, end, intensity }: { start: [number, number, number]; end: [number, number, number]; intensity: number }) {
-  const pulseRef = useRef<THREE.Mesh>(null);
-  const curve = useMemo(() => {
-    const startPoint = new THREE.Vector3(...start);
-    const endPoint = new THREE.Vector3(...end);
-    const midPoint = startPoint.clone().add(endPoint).multiplyScalar(0.5).normalize().multiplyScalar(7.4 + intensity * 0.28);
-    return new THREE.CatmullRomCurve3([startPoint, midPoint, endPoint]);
-  }, [start, end, intensity]);
-
-  useFrame(({ clock }) => {
-    if (!pulseRef.current) return;
-    const t = (clock.elapsedTime * (0.12 + intensity * 0.015)) % 1;
-    pulseRef.current.position.copy(curve.getPointAt(t));
+  useFrame((_, delta) => {
+    if (ref.current) ref.current.rotation.y += delta * 0.08;
   });
 
   return (
     <group>
-      <mesh>
-        <tubeGeometry args={[curve, 96, 0.045 + intensity * 0.006, 10, false]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.52 + intensity * 0.035} blending={THREE.AdditiveBlending} />
+      <mesh ref={ref}>
+        <sphereGeometry args={[3.55, 96, 96]} />
+        <meshStandardMaterial color="#062c88" emissive="#061f55" metalness={0.72} roughness={0.18} />
       </mesh>
-      <mesh>
-        <tubeGeometry args={[curve, 96, 0.012 + intensity * 0.002, 8, false]} />
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.38} blending={THREE.AdditiveBlending} />
+      <mesh scale={1.08}>
+        <sphereGeometry args={[3.55, 96, 96]} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.075} side={THREE.BackSide} />
       </mesh>
-      <mesh ref={pulseRef}>
-        <sphereGeometry args={[0.18 + intensity * 0.014]} />
-        <meshBasicMaterial color="#a7f3d0" transparent opacity={1} blending={THREE.AdditiveBlending} />
+      <mesh scale={1.22}>
+        <sphereGeometry args={[3.55, 96, 96]} />
+        <meshBasicMaterial color="#14b8a6" transparent opacity={0.035} side={THREE.BackSide} />
       </mesh>
     </group>
   );
 }
 
-function HologramCard({ match, position }: { match: Match; position: [number, number, number] }) {
-  const live = isMatchLive(match);
+function MatchPin({ position, live, intensity }: { position: [number, number, number]; live: boolean; intensity: number }) {
+  const group = useRef<THREE.Group>(null);
+  const glow = useRef<THREE.Mesh>(null);
+
+  useFrame(({ clock }) => {
+    const pulse = 1 + Math.sin(clock.elapsedTime * (live ? 4.8 : 2.4)) * (live ? 0.32 : 0.12);
+    if (group.current) group.current.scale.setScalar(pulse);
+    if (glow.current) glow.current.scale.setScalar(1.6 + pulse * 0.55 + intensity * 0.09);
+  });
 
   return (
-    <Html position={position} center distanceFactor={5.1} transform occlude={false}>
-      <div className="min-w-72 rounded-3xl border border-cyan-200/80 bg-black/80 px-7 py-5 text-center text-white shadow-[0_0_75px_rgba(34,211,238,0.62)] backdrop-blur-xl transition-all duration-500">
-        <div className="mb-2 text-xs uppercase tracking-[0.36em] text-cyan-200">{live ? 'Live signal' : match.finished ? 'Final' : 'Orbital feed'}</div>
-        <div className="text-lg font-semibold leading-tight">{match.home}</div>
-        <div className="font-mono text-5xl font-bold text-emerald-300 transition-all duration-500 drop-shadow-[0_0_18px_rgba(110,231,183,0.9)]">{match.score}</div>
-        <div className="text-lg font-semibold leading-tight">{match.away}</div>
-        <div className="mt-3 text-xs uppercase tracking-widest text-white/60">Group {match.group} • {match.time}</div>
+    <group ref={group} position={position}>
+      <mesh>
+        <sphereGeometry args={[0.14 + intensity * 0.012, 24, 24]} />
+        <meshStandardMaterial color={live ? '#34d399' : '#67e8f9'} emissive={live ? '#22c55e' : '#22d3ee'} emissiveIntensity={1.8} />
+      </mesh>
+      <mesh ref={glow}>
+        <sphereGeometry args={[0.28, 24, 24]} />
+        <meshBasicMaterial color={live ? '#34d399' : '#22d3ee'} transparent opacity={0.18} />
+      </mesh>
+      <pointLight color={live ? '#34d399' : '#22d3ee'} intensity={live ? 3 : 1.4} distance={3.4} />
+    </group>
+  );
+}
+
+function EnergyArc({ index, active }: { index: number; active: boolean }) {
+  const ref = useRef<THREE.Line>(null);
+  const pulse = useRef<THREE.Mesh>(null);
+
+  const curve = useMemo(() => {
+    const a = (index / 8) * Math.PI * 2;
+    const b = a + 1.15 + (index % 3) * 0.24;
+    const start = new THREE.Vector3(Math.cos(a) * 4.0, Math.sin(index) * 1.4, Math.sin(a) * 2.5);
+    const middle = new THREE.Vector3(Math.cos((a + b) / 2) * 5.3, 1.5 + (index % 2) * 0.45, Math.sin((a + b) / 2) * 4.1);
+    const end = new THREE.Vector3(Math.cos(b) * 4.0, Math.cos(index) * 1.4, Math.sin(b) * 2.5);
+    return new THREE.QuadraticBezierCurve3(start, middle, end);
+  }, [index]);
+
+  const points = useMemo(() => curve.getPoints(80), [curve]);
+
+  useFrame(({ clock }) => {
+    if (ref.current) ref.current.rotation.y += 0.0009 * (index % 2 === 0 ? 1 : -1);
+    if (pulse.current) {
+      const t = (clock.elapsedTime * (active ? 0.34 : 0.18) + index * 0.13) % 1;
+      pulse.current.position.copy(curve.getPointAt(t));
+    }
+  });
+
+  return (
+    <group>
+      <line ref={ref}>
+        <bufferGeometry attach="geometry" setFromPoints={points} />
+        <lineBasicMaterial attach="material" color={active ? '#67e8f9' : '#38bdf8'} transparent opacity={active ? 0.72 : 0.34} />
+      </line>
+      <mesh ref={pulse}>
+        <sphereGeometry args={[active ? 0.075 : 0.045, 16, 16]} />
+        <meshBasicMaterial color="#e0ffff" transparent opacity={active ? 0.95 : 0.55} />
+      </mesh>
+    </group>
+  );
+}
+
+function HologramCard({ match, index }: { match: Match; index: number }) {
+  const angle = (index / 6) * Math.PI * 2;
+  const radius = 5.25;
+  const y = index % 2 === 0 ? 2.55 : -2.35;
+
+  return (
+    <Html position={[Math.cos(angle) * radius, y, Math.sin(angle) * 2.2]} center distanceFactor={8} transform>
+      <div
+        style={{
+          minWidth: 160,
+          padding: '10px 12px',
+          borderRadius: 14,
+          background: 'rgba(3, 12, 22, 0.72)',
+          border: '1px solid rgba(103,232,249,0.48)',
+          boxShadow: '0 0 28px rgba(34,211,238,0.22)',
+          color: 'white',
+          fontFamily: 'Inter, system-ui, sans-serif',
+          textAlign: 'center',
+          pointerEvents: 'none',
+        }}
+      >
+        <div style={{ fontSize: 12, color: '#67e8f9', letterSpacing: 1.3 }}>GROUP {match.group}</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontWeight: 800, fontSize: 14 }}>
+          <span>{match.homeCode}</span>
+          <span style={{ color: '#34d399', fontSize: 18 }}>{match.score}</span>
+          <span>{match.awayCode}</span>
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.72 }}>{match.time}</div>
       </div>
     </Html>
   );
 }
 
-function EmptyState({ title, message }: { title: string; message: string }) {
+function GlobeScene({ matches, activity }: { matches: Match[]; activity: number }) {
+  const visible = matches.slice(0, 10);
+  const active = visible.some((match) => !match.finished);
+
   return (
-    <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
-      <div className="text-2xl font-bold mb-2">{title}</div>
-      <div className="text-sm opacity-75">{message}</div>
-    </div>
+    <Canvas camera={{ position: [0, 0, 12], fov: 42 }}>
+      <ambientLight intensity={0.58} />
+      <pointLight position={[8, 9, 10]} intensity={1.6} />
+      <pointLight position={[-8, -4, 6]} intensity={0.65} color="#22d3ee" />
+      <Globe />
+      {Array.from({ length: 8 }).map((_, index) => (
+        <EnergyArc key={index} index={index} active={activity > 1 || active} />
+      ))}
+      {visible.map((match, index) => {
+        const angle = (index / Math.max(visible.length, 1)) * Math.PI * 2;
+        return (
+          <MatchPin
+            key={match.id}
+            position={[Math.cos(angle) * 3.95, Math.sin(index * 1.7) * 1.45, Math.sin(angle) * 2.9]}
+            live={!match.finished}
+            intensity={match.goals}
+          />
+        );
+      })}
+      {visible.slice(0, 5).map((match, index) => (
+        <HologramCard key={`h-${match.id}`} match={match} index={index} />
+      ))}
+      <Stars radius={320} depth={80} count={900 + Math.round(activity * 140)} factor={4.6 + activity * 0.25} saturation={0} fade speed={0.45 + activity * 0.08} />
+      <OrbitControls enablePan={false} enableZoom autoRotate autoRotateSpeed={0.26 + activity * 0.02} />
+      <Environment preset="night" />
+    </Canvas>
   );
 }
 
 function StatusBadge({ status, lastUpdated }: { status: DataStatus; lastUpdated: string }) {
-  const label =
-    status === 'loading'
-      ? 'SYNCING'
-      : status === 'public-api'
-        ? 'PUBLIC API'
-        : status === 'api-error'
-          ? 'API ERROR'
-          : 'NO DATA';
-
-  const icon = status === 'api-error' ? <WifiOff className="w-4 h-4" /> : <Play className="w-4 h-4" />;
+  const label = status === 'loading' ? 'SYNCING' : status === 'public-api' ? 'PUBLIC API' : status === 'api-error' ? 'API ERROR' : 'NO DATA';
+  const icon = status === 'api-error' ? <WifiOff size={15} /> : <Play size={15} />;
 
   return (
-    <div className="px-4 py-1.5 bg-emerald-500/10 border border-emerald-500 rounded-full flex items-center gap-2">
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 999, border: '1px solid rgba(52,211,153,.45)', background: 'rgba(16,185,129,.12)', color: '#d1fae5', fontSize: 12 }}>
       {icon}
       <span>{label}</span>
-      {lastUpdated && <span className="opacity-60">• {lastUpdated}</span>}
+      {lastUpdated && <span style={{ opacity: 0.65 }}>• {lastUpdated}</span>}
     </div>
   );
 }
 
-function WC26Nexus() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+function MetricCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div style={{ ...glass, borderRadius: 16, padding: '12px 14px', minWidth: 0 }}>
+      <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1.4, marginTop: 5 }}>{label}</div>
+    </div>
+  );
+}
+
+function MatchRow({ match }: { match: Match }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 10, alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(148,163,184,.16)' }}>
+      <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 13 }}>{match.home}</div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ color: '#34d399', fontWeight: 900, fontSize: 18 }}>{match.score}</div>
+        <div style={{ color: '#67e8f9', fontSize: 10, textTransform: 'uppercase' }}>G{match.group} • {match.time}</div>
+      </div>
+      <div style={{ fontWeight: 700, fontSize: 13 }}>{match.away}</div>
+    </div>
+  );
+}
+
+function StandingTable({ group, rows }: { group: string; rows: GroupStanding[] }) {
+  return (
+    <div style={{ padding: '12px 0', borderBottom: '1px solid rgba(148,163,184,.16)' }}>
+      <div style={{ color: '#67e8f9', fontWeight: 800, marginBottom: 8 }}>Group {group}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 26px 26px 26px 32px', gap: 5, color: '#94a3b8', fontSize: 11, fontWeight: 800 }}>
+        <span>Team</span><span>MP</span><span>W</span><span>GD</span><span>PTS</span>
+      </div>
+      {rows.map((row) => (
+        <div key={`${group}-${row.teamId}`} style={{ display: 'grid', gridTemplateColumns: '1fr 26px 26px 26px 32px', gap: 5, alignItems: 'center', fontSize: 12, paddingTop: 6 }}>
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.teamName}</span>
+          <span>{row.mp}</span>
+          <span>{row.w}</span>
+          <span>{row.gd}</span>
+          <span style={{ color: '#34d399', fontWeight: 800 }}>{row.pts}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export default function WC26Nexus() {
   const [nextMatchTime, setNextMatchTime] = useState('');
   const [matches, setMatches] = useState<Match[]>([]);
   const [standings, setStandings] = useState<GroupStanding[]>([]);
+  const [news, setNews] = useState<NewsItem[]>([]);
   const [status, setStatus] = useState<DataStatus>('loading');
   const [lastUpdated, setLastUpdated] = useState('');
 
+  const fixtureList = useMemo(() => [...matches].sort((a, b) => a.sortTime - b.sortTime).slice(0, 12), [matches]);
+  const completedMatches = useMemo(() => matches.filter((match) => match.finished).length, [matches]);
+  const totalGoals = useMemo(() => matches.reduce((sum, match) => sum + match.goals, 0), [matches]);
+  const activeMatches = useMemo(() => matches.filter((match) => !match.finished && match.sortTime <= Date.now()).length, [matches]);
+  const activity = Math.min(6, activeMatches * 2 + totalGoals / 12 + fixtureList.length / 8);
+
   const nextMatch = useMemo(() => {
     const now = Date.now();
-    const upcoming = matches
-      .filter((match) => !match.finished && match.sortTime >= now)
-      .sort((a, b) => a.sortTime - b.sortTime);
-
+    const upcoming = matches.filter((match) => !match.finished && match.sortTime >= now).sort((a, b) => a.sortTime - b.sortTime);
     return upcoming[0] || matches.find((match) => !match.finished) || matches[0];
   }, [matches]);
 
-  const fixtureList = useMemo(() => {
-    return [...matches].sort((a, b) => a.sortTime - b.sortTime).slice(0, 24);
-  }, [matches]);
-
-  const globeMatches = useMemo(() => fixtureList.slice(0, 16), [fixtureList]);
-
-  const liveOrFeaturedMatches = useMemo(() => {
-    const live = fixtureList.filter(isMatchLive);
-    return (live.length > 0 ? live : fixtureList.filter((match) => !match.finished)).slice(0, 4);
-  }, [fixtureList]);
-
-  const venuePositions = useMemo(() => {
-    return globeMatches.map((match, index) => ({ match, position: getVenuePosition(match, index) }));
-  }, [globeMatches]);
-
-  const activityScore = useMemo(() => {
-    const liveCount = fixtureList.filter(isMatchLive).length;
-    const goals = fixtureList.reduce((sum, match) => sum + match.totalGoals, 0);
-    return Math.min(10, liveCount * 3 + goals * 0.15);
-  }, [fixtureList]);
-
-  const starCount = Math.round(1300 + activityScore * 120);
-  const starSpeed = 0.5 + activityScore * 0.1;
-
   const standingsByGroup = useMemo(() => {
     const grouped = new Map<string, GroupStanding[]>();
-
     standings.forEach((standing) => {
       if (!grouped.has(standing.group)) grouped.set(standing.group, []);
       grouped.get(standing.group)?.push(standing);
     });
-
     return [...grouped.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([group, rows]) => [
-        group,
-        rows.sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || a.teamName.localeCompare(b.teamName)),
-      ] as const);
+      .map(([group, rows]) => [group, rows.sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || a.teamName.localeCompare(b.teamName))] as const);
   }, [standings]);
 
   useEffect(() => {
     const fetchLiveData = async () => {
       try {
         setStatus('loading');
-
         const [gamesResponse, groupsResponse] = await Promise.all([
           fetch(`${API_BASE}/get/games`, { cache: 'no-store' }),
           fetch(`${API_BASE}/get/groups`, { cache: 'no-store' }),
         ]);
-
-        if (!gamesResponse.ok || !groupsResponse.ok) {
-          throw new Error(`API request failed: games ${gamesResponse.status}, groups ${groupsResponse.status}`);
-        }
+        if (!gamesResponse.ok || !groupsResponse.ok) throw new Error(`API request failed: games ${gamesResponse.status}, groups ${groupsResponse.status}`);
 
         const gamesJson = await gamesResponse.json();
         const groupsJson = await groupsResponse.json();
-
         const rawGames = asArray<RawGame>(gamesJson, 'games');
         const rawGroups = asArray<RawGroup>(groupsJson, 'groups');
         const teamNames = buildTeamNameMap(rawGames);
@@ -428,8 +478,23 @@ function WC26Nexus() {
       }
     };
 
+    const fetchNews = async () => {
+      try {
+        const newsResponse = await fetch(`${MATCHIQ_BASE}/api/news`, { cache: 'no-store' });
+        if (!newsResponse.ok) return;
+        const newsJson = await newsResponse.json();
+        setNews(asArray<NewsItem>(newsJson.news, 'news').slice(0, 8));
+      } catch (error) {
+        console.warn('MatchIQ news unavailable:', error);
+      }
+    };
+
     fetchLiveData();
-    const interval = window.setInterval(fetchLiveData, 60000);
+    fetchNews();
+    const interval = window.setInterval(() => {
+      fetchLiveData();
+      fetchNews();
+    }, 60000);
     return () => window.clearInterval(interval);
   }, []);
 
@@ -437,25 +502,23 @@ function WC26Nexus() {
     const updateTime = () => {
       if (nextMatch && !nextMatch.finished && nextMatch.sortTime !== Number.MAX_SAFE_INTEGER) {
         const diff = nextMatch.sortTime - Date.now();
-
         if (diff > 0) {
           const days = Math.floor(diff / (1000 * 60 * 60 * 24));
           const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-          setNextMatchTime(`${days}d ${hours}h AWAY`);
+          setNextMatchTime(`${days}d ${hours}h`);
           return;
         }
       }
 
       const diff = WORLD_CUP_OPENER_UTC - Date.now();
-
       if (diff > 0) {
         const days = Math.floor(diff / (1000 * 60 * 60 * 24));
         const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        setNextMatchTime(`${days}d ${hours}h AWAY`);
+        setNextMatchTime(`${days}d ${hours}h`);
       } else if (matches.some((match) => !match.finished)) {
-        setNextMatchTime('TOURNAMENT ACTIVE');
+        setNextMatchTime('ACTIVE');
       } else if (matches.length > 0) {
-        setNextMatchTime('RESULTS AVAILABLE');
+        setNextMatchTime('RESULTS');
       } else {
         setNextMatchTime(status === 'loading' ? 'SYNCING' : 'NO DATA');
       }
@@ -466,323 +529,104 @@ function WC26Nexus() {
     return () => window.clearInterval(interval);
   }, [matches, nextMatch, status]);
 
-  const featuredGroups = standingsByGroup.slice(0, 3);
-  const leftFeed = fixtureList.slice(0, 6);
-  const rightStandings = featuredGroups;
-  const totalGoals = fixtureList.reduce((sum, match) => sum + match.totalGoals, 0);
-  const completedMatches = fixtureList.filter((match) => match.finished).length;
-
   return (
-    <div className="relative min-h-screen overflow-hidden bg-black text-white">
-      <style>{`
-        .nexus-glass {
-          position: relative;
-          overflow: hidden;
-          border: 1px solid rgba(125, 211, 252, 0.24);
-          background:
-            radial-gradient(circle at 15% 0%, rgba(125, 211, 252, 0.24), transparent 30%),
-            radial-gradient(circle at 85% 10%, rgba(16, 185, 129, 0.18), transparent 32%),
-            linear-gradient(135deg, rgba(255,255,255,0.13), rgba(255,255,255,0.035) 42%, rgba(0,0,0,0.58));
-          box-shadow:
-            inset 0 1px 0 rgba(255,255,255,0.18),
-            inset 0 -1px 0 rgba(255,255,255,0.04),
-            0 22px 70px rgba(0,0,0,0.45),
-            0 0 50px rgba(34,211,238,0.12);
-          backdrop-filter: blur(22px) saturate(150%);
-          -webkit-backdrop-filter: blur(22px) saturate(150%);
-        }
-        .nexus-glass::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-          background:
-            linear-gradient(115deg, rgba(255,255,255,0.24), transparent 22%, transparent 72%, rgba(255,255,255,0.08)),
-            repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 22px);
-          mix-blend-mode: screen;
-          opacity: 0.45;
-        }
-        .nexus-glass > * { position: relative; z-index: 1; }
-        .nexus-pill {
-          border: 1px solid rgba(125,211,252,0.22);
-          background: rgba(0,0,0,0.42);
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 0 24px rgba(34,211,238,0.1);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-        }
-        .nexus-scanline {
-          background: linear-gradient(90deg, transparent, rgba(34,211,238,0.92), rgba(16,185,129,0.78), transparent);
-          animation: nexus-scan 4.8s ease-in-out infinite;
-        }
-        @keyframes nexus-scan {
-          0%, 100% { transform: translateX(-55%); opacity: 0.25; }
-          50% { transform: translateX(55%); opacity: 0.75; }
-        }
-      `}</style>
+    <div style={{ minHeight: '100vh', maxHeight: '100vh', overflow: 'hidden', background: '#020617', color: '#f8fafc', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', position: 'relative' }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 42%, rgba(14,165,233,.20), transparent 38%), radial-gradient(circle at 85% 20%, rgba(16,185,129,.10), transparent 28%), linear-gradient(135deg, #020617 0%, #07111f 55%, #021716 100%)' }} />
+      <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(103,232,249,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(103,232,249,.045) 1px, transparent 1px)', backgroundSize: '42px 42px', opacity: 0.72 }} />
 
-      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(8,47,73,0.28),transparent_42%),radial-gradient(circle_at_20%_20%,rgba(34,211,238,0.13),transparent_30%),radial-gradient(circle_at_80%_75%,rgba(16,185,129,0.12),transparent_32%)]" />
-
-      <div className="absolute inset-0 z-10">
-        <Canvas camera={{ position: [0, 0, 12.2], fov: 34 }}>
-          <ambientLight intensity={0.58 + activityScore * 0.045} />
-          <pointLight position={[10, 10, 10]} intensity={2.6 + activityScore * 0.18} />
-          <Globe />
-          {venuePositions.map(({ match, position }) => (
-            <MatchPin key={match.id} position={position} match={match} />
-          ))}
-          {venuePositions.slice(0, 9).map(({ position }, index, list) => {
-            const next = list[(index + 1) % list.length];
-            if (!next || list.length < 2) return null;
-            return <EnergyArc key={`arc-${index}`} start={position} end={next.position} intensity={activityScore} />;
-          })}
-          {liveOrFeaturedMatches.slice(0, 4).map((match, index) => (
-            <HologramCard
-              key={`holo-${match.id}`}
-              match={match}
-              position={[index % 2 === 0 ? -8.3 : 8.3, 2.75 - Math.floor(index / 2) * 3.35, -0.75]}
-            />
-          ))}
-          <Stars key={starCount} radius={300} depth={70} count={starCount + 900} factor={9 + activityScore * 0.42} saturation={0} fade speed={starSpeed} />
-          <OrbitControls enablePan={false} enableZoom autoRotate autoRotateSpeed={0.38 + activityScore * 0.035} />
-          <Environment preset="night" />
-        </Canvas>
-      </div>
-
-      <header className="fixed left-4 right-4 top-4 z-40 flex flex-wrap items-center justify-between gap-3 rounded-3xl nexus-glass px-5 py-3 md:left-6 md:right-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-300 to-emerald-300 text-xl shadow-[0_0_30px_rgba(34,211,238,0.38)]">
-            ⚽
+      <div style={{ position: 'relative', zIndex: 2, height: '100vh', display: 'grid', gridTemplateRows: '72px 1fr 64px', padding: 18, gap: 14 }}>
+        <header style={{ ...glass, borderRadius: 18, display: 'grid', gridTemplateColumns: '300px 1fr 300px', alignItems: 'center', padding: '0 18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 999, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg, #22d3ee, #34d399)', boxShadow: '0 0 26px rgba(34,211,238,.45)' }}>⚽</div>
+            <div>
+              <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: -1 }}>WC26 NEXUS</div>
+              <div style={{ fontSize: 11, color: '#67e8f9', letterSpacing: 1.6, textTransform: 'uppercase' }}>World Cup command center</div>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-black tracking-[-0.06em] md:text-3xl">WC26 NEXUS</h1>
-            <p className="text-[10px] uppercase tracking-[0.32em] text-cyan-200/80">World Cup command center</p>
+          <div style={{ textAlign: 'center' }}>
+            <StatusBadge status={status} lastUpdated={lastUpdated} />
           </div>
-        </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <MetricCard label="Matches" value={matches.length || 104} />
+            <MetricCard label="Goals" value={totalGoals} />
+          </div>
+        </header>
 
-        <nav className="flex flex-wrap gap-2 text-xs">
-          {(['overview', 'groups', 'fixtures', 'bracket'] as ActiveTab[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`rounded-full px-4 py-2 uppercase tracking-[0.22em] transition-all ${
-                activeTab === tab ? 'bg-white text-black shadow-[0_0_22px_rgba(255,255,255,0.28)]' : 'nexus-pill text-white/75 hover:text-white'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </nav>
+        <main style={{ display: 'grid', gridTemplateColumns: '320px minmax(480px, 1fr) 340px', gap: 14, minHeight: 0 }}>
+          <aside style={{ ...glass, borderRadius: 22, padding: 16, minHeight: 0, display: 'grid', gridTemplateRows: 'auto auto 1fr', gap: 14 }}>
+            <section style={{ borderBottom: '1px solid rgba(148,163,184,.16)', paddingBottom: 14 }}>
+              <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>Next Signal</div>
+              <div style={{ marginTop: 10, fontSize: 20, fontWeight: 850 }}>{nextMatch ? `${nextMatch.home} vs ${nextMatch.away}` : 'No match data'}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, color: '#34d399', fontWeight: 900, fontSize: 26 }}>
+                <Trophy size={22} />
+                {nextMatchTime}
+              </div>
+              <div style={{ marginTop: 8, color: '#94a3b8', fontSize: 12 }}>
+                {nextMatch ? `${nextMatch.venue} • Group ${nextMatch.group} • Matchday ${nextMatch.matchday}` : 'Waiting for public feed'}
+              </div>
+            </section>
 
-        <StatusBadge status={status} lastUpdated={lastUpdated} />
-      </header>
+            <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <MetricCard label="Finished" value={completedMatches} />
+              <MetricCard label="Signal" value={activity.toFixed(1)} />
+            </section>
 
-      {activeTab === 'overview' && (
-        <main className="pointer-events-none fixed inset-0 z-30 grid grid-cols-1 gap-4 px-4 pb-24 pt-28 md:px-6 lg:grid-cols-[330px_minmax(520px,1fr)_330px] lg:gap-6">
-          <section className="pointer-events-auto flex flex-col gap-4 lg:pt-12">
-            <div onClick={() => setActiveTab('fixtures')} className="nexus-glass cursor-pointer rounded-3xl p-5 transition hover:border-emerald-300/70">
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-[10px] uppercase tracking-[0.34em] text-cyan-200">Next signal</div>
-                  <div className="mt-2 text-2xl font-black leading-tight text-white">
-                    {nextMatch ? `${nextMatch.home} vs ${nextMatch.away}` : 'No match data'}
-                  </div>
-                </div>
-                <Trophy className="h-8 w-8 shrink-0 text-amber-300" />
-              </div>
-              <div className="font-mono text-5xl font-black text-emerald-300 drop-shadow-[0_0_18px_rgba(110,231,183,0.6)]">{nextMatchTime}</div>
-              <div className="mt-3 text-sm text-white/62">
-                {nextMatch ? `${nextMatch.venue} • Group ${nextMatch.group} • Matchday ${nextMatch.matchday}` : 'Waiting for public API data'}
-              </div>
-            </div>
-
-            <div className="nexus-glass rounded-3xl p-5">
-              <div className="mb-4 flex items-center justify-between">
-                <div className="text-[10px] uppercase tracking-[0.34em] text-cyan-200">Live / upcoming feed</div>
-                <RefreshCw className="h-4 w-4 text-white/45" />
-              </div>
-              <div className="space-y-3">
-                {leftFeed.map((match) => (
-                  <button
-                    key={`feed-${match.id}`}
-                    onClick={() => setActiveTab('fixtures')}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.045] px-4 py-3 text-left transition hover:border-cyan-200/45 hover:bg-white/[0.08]"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-bold">{match.home} vs {match.away}</div>
-                        <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-white/45">Group {match.group} • {match.time}</div>
-                      </div>
-                      <div className="font-mono text-xl font-black text-emerald-300">{match.score}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="pointer-events-none relative hidden items-end justify-center lg:flex">
-            <div className="absolute bottom-24 h-px w-[76%] overflow-hidden rounded-full bg-cyan-300/10">
-              <div className="nexus-scanline h-full w-full" />
-            </div>
-            <div className="mb-5 rounded-full nexus-pill px-6 py-3 text-center text-[10px] uppercase tracking-[0.36em] text-cyan-100/72">
-              Orbital visualization layer • pins • arcs • holograms
-            </div>
-          </section>
-
-          <section className="pointer-events-auto flex flex-col gap-4 lg:pt-12">
-            <div className="grid grid-cols-3 gap-3">
-              <div className="nexus-glass rounded-3xl p-4 text-center">
-                <div className="text-3xl font-black">48</div>
-                <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-white/50">Teams</div>
-              </div>
-              <div className="nexus-glass rounded-3xl p-4 text-center">
-                <div className="text-3xl font-black">{completedMatches}</div>
-                <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-white/50">Finals</div>
-              </div>
-              <div className="nexus-glass rounded-3xl p-4 text-center">
-                <div className="text-3xl font-black">{totalGoals}</div>
-                <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-white/50">Goals</div>
-              </div>
-            </div>
-
-            <div className="nexus-glass rounded-3xl p-5">
-              <div className="mb-3 flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] uppercase tracking-[0.34em] text-cyan-200">Tournament signal</div>
-                  <div className="mt-1 text-sm text-white/52">Drives starfield and arc intensity</div>
-                </div>
-                <div className="font-mono text-3xl font-black text-emerald-300">{activityScore.toFixed(1)}</div>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-sky-200 to-emerald-300" style={{ width: `${Math.min(100, activityScore * 10)}%` }} />
-              </div>
-            </div>
-
-            <div className="nexus-glass rounded-3xl p-5">
-              <div className="mb-4 text-[10px] uppercase tracking-[0.34em] text-cyan-200">Group leaders</div>
-              <div className="space-y-3">
-                {rightStandings.map(([group, rows]) => {
-                  const leader = rows[0];
-                  return (
-                    <button
-                      key={`leader-${group}`}
-                      onClick={() => setActiveTab('groups')}
-                      className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-white/[0.045] px-4 py-3 text-left transition hover:border-cyan-200/45"
-                    >
-                      <div>
-                        <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">Group {group}</div>
-                        <div className="text-sm font-bold">{leader?.teamName || 'Pending'}</div>
-                      </div>
-                      <div className="font-mono text-xl font-black text-emerald-300">{leader?.pts ?? 0}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-        </main>
-      )}
-
-      {activeTab !== 'overview' && (
-        <main className="fixed inset-x-4 bottom-24 top-28 z-30 pointer-events-auto md:inset-x-6">
-          {activeTab === 'groups' && (
-            <div className="nexus-glass h-full overflow-auto rounded-3xl p-6 md:p-8">
-              <h2 className="mb-6 text-3xl font-black md:text-5xl">GROUP STAGE STANDINGS</h2>
-              {standingsByGroup.length === 0 ? (
-                <EmptyState title="No standings loaded" message="The public API did not return group table data." />
-              ) : (
-                <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
-                  {standingsByGroup.map(([group, rows]) => (
-                    <div key={group} className="rounded-3xl border border-white/10 bg-black/32 p-5">
-                      <h3 className="mb-4 text-2xl font-black text-cyan-200">Group {group}</h3>
-                      <div className="overflow-x-auto">
-                        <table className="w-full table-auto border-collapse text-sm">
-                          <thead>
-                            <tr className="border-b border-white/10 text-white/56">
-                              <th className="py-2 pr-3 text-left font-medium">Team</th>
-                              {['MP', 'W', 'D', 'L', 'PTS', 'GF', 'GD'].map((header) => (
-                                <th key={header} className="px-2 py-2 text-right font-medium">{header}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rows.map((row) => (
-                              <tr key={`${group}-${row.teamId}`} className="border-b border-white/5 last:border-b-0">
-                                <td className="whitespace-nowrap py-2 pr-3 text-left font-medium">{row.teamName}</td>
-                                <td className="px-2 py-2 text-right">{row.mp}</td>
-                                <td className="px-2 py-2 text-right">{row.w}</td>
-                                <td className="px-2 py-2 text-right">{row.d}</td>
-                                <td className="px-2 py-2 text-right">{row.l}</td>
-                                <td className="px-2 py-2 text-right font-black text-emerald-300">{row.pts}</td>
-                                <td className="px-2 py-2 text-right">{row.gf}</td>
-                                <td className="px-2 py-2 text-right">{row.gd}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'fixtures' && (
-            <div className="nexus-glass h-full overflow-auto rounded-3xl p-6 md:p-8">
-              <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-                <h2 className="text-3xl font-black md:text-5xl">FIXTURES / RESULTS</h2>
-                <div className="nexus-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm text-white/70">
-                  <RefreshCw className="h-4 w-4" /> refreshes every 60s
-                </div>
+            <section style={{ minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 8 }}>
+                <Activity size={14} /> Live / Upcoming Feed
               </div>
               {fixtureList.length === 0 ? (
-                <EmptyState title="No fixtures loaded" message="No fake scores are being shown. Check API availability or CORS." />
+                <div style={{ color: '#94a3b8', fontSize: 13 }}>No fixtures loaded.</div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                  {fixtureList.map((match) => (
-                    <div key={match.id} className="rounded-3xl border border-white/10 bg-black/32 p-5">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="min-w-0 flex-1 text-right">
-                          <div className="truncate text-xl font-bold">{match.home}</div>
-                        </div>
-                        <div className="min-w-32 text-center">
-                          <div className="font-mono text-4xl font-black text-emerald-300">{match.score}</div>
-                          <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">Group {match.group}</div>
-                          <div className="mt-1 text-xs text-white/52">{match.time}</div>
-                        </div>
-                        <div className="min-w-0 flex-1 text-left">
-                          <div className="truncate text-xl font-bold">{match.away}</div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                fixtureList.slice(0, 8).map((match) => <MatchRow key={match.id} match={match} />)
               )}
-            </div>
-          )}
+            </section>
+          </aside>
 
-          {activeTab === 'bracket' && (
-            <div className="nexus-glass flex h-full items-center justify-center rounded-3xl p-8 text-center">
-              <div className="max-w-2xl">
-                <h2 className="mb-4 text-5xl font-black">KNOCKOUT BRACKET</h2>
-                <p className="text-xl text-white/72">
-                  The current public feed includes group fixtures/results and standings. Knockout bracket data will appear here when the API exposes knockout matches.
-                </p>
+          <section style={{ ...glass, borderRadius: 26, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 3 }}>
+              <div style={{ color: '#67e8f9', fontSize: 12, letterSpacing: 1.8, textTransform: 'uppercase', fontWeight: 900 }}>Orbital Visualization Layer</div>
+              <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>pins • arcs • holograms • reactive starfield</div>
+            </div>
+            <div style={{ position: 'absolute', top: 18, right: 20, zIndex: 3, color: '#94a3b8', fontSize: 12, textAlign: 'right' }}>
+              <RefreshCw size={14} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 4 }} /> refreshes every 60s
+            </div>
+            <GlobeScene matches={fixtureList} activity={activity} />
+          </section>
+
+          <aside style={{ ...glass, borderRadius: 22, padding: 16, minHeight: 0, display: 'grid', gridTemplateRows: 'auto 1fr auto', gap: 14 }}>
+            <section>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>
+                <Shield size={14} /> Group Standings
               </div>
-            </div>
-          )}
-        </main>
-      )}
+            </section>
 
-      <footer className="fixed bottom-4 left-4 right-4 z-40 flex flex-wrap items-center justify-center gap-3 rounded-3xl nexus-glass px-5 py-3 text-xs md:gap-8 md:text-sm">
-        <div className="flex items-center gap-2"><MapPin className="h-4 w-4" /> 16 Venues • 3 Countries</div>
-        <div>48 TEAMS • 12 GROUPS</div>
-        <div>🇲🇽 🇺🇸 🇨🇦 HOSTS</div>
-        <div className="hidden text-emerald-300 md:block">Glass command layout • 0.8.3 prep</div>
-      </footer>
+            <section style={{ minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
+              {standingsByGroup.length === 0 ? (
+                <div style={{ color: '#94a3b8', fontSize: 13 }}>No standings loaded.</div>
+              ) : (
+                standingsByGroup.map(([group, rows]) => <StandingTable key={group} group={group} rows={rows} />)
+              )}
+            </section>
+
+            <section style={{ ...glass, borderRadius: 16, padding: 12 }}>
+              <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>MatchIQ Ready</div>
+              <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 6, lineHeight: 1.45 }}>Next layer: squads, coaches, referees, stats, buzz feed, and match intelligence panels.</div>
+            </section>
+          </aside>
+        </main>
+
+        <footer style={{ ...glass, borderRadius: 18, display: 'grid', gridTemplateColumns: '180px 1fr', alignItems: 'center', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 16, color: '#67e8f9', fontWeight: 900, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12 }}>
+            <Newspaper size={15} /> Tournament Buzz
+          </div>
+          <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', color: '#cbd5e1', fontSize: 13 }}>
+            {(news.length ? news : [{ title: 'MatchIQ news feed standing by', source: 'WC26 Nexus' }])
+              .map((item) => `${item.source ? item.source + ': ' : ''}${item.title}`)
+              .join('   •   ')}
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
-
-export default WC26Nexus;
