@@ -466,162 +466,256 @@ function WC26Nexus() {
     return () => window.clearInterval(interval);
   }, [matches, nextMatch, status]);
 
+  const featuredGroups = standingsByGroup.slice(0, 3);
+  const leftFeed = fixtureList.slice(0, 6);
+  const rightStandings = featuredGroups;
+  const totalGoals = fixtureList.reduce((sum, match) => sum + match.totalGoals, 0);
+  const completedMatches = fixtureList.filter((match) => match.finished).length;
+
   return (
-    <div className="min-h-screen bg-black text-white overflow-hidden">
-      <div className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md border-b border-cyan-500/30 p-4 flex flex-wrap items-center justify-between gap-4">
+    <div className="relative min-h-screen overflow-hidden bg-black text-white">
+      <style>{`
+        .nexus-glass {
+          position: relative;
+          overflow: hidden;
+          border: 1px solid rgba(125, 211, 252, 0.24);
+          background:
+            radial-gradient(circle at 15% 0%, rgba(125, 211, 252, 0.24), transparent 30%),
+            radial-gradient(circle at 85% 10%, rgba(16, 185, 129, 0.18), transparent 32%),
+            linear-gradient(135deg, rgba(255,255,255,0.13), rgba(255,255,255,0.035) 42%, rgba(0,0,0,0.58));
+          box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.18),
+            inset 0 -1px 0 rgba(255,255,255,0.04),
+            0 22px 70px rgba(0,0,0,0.45),
+            0 0 50px rgba(34,211,238,0.12);
+          backdrop-filter: blur(22px) saturate(150%);
+          -webkit-backdrop-filter: blur(22px) saturate(150%);
+        }
+        .nexus-glass::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background:
+            linear-gradient(115deg, rgba(255,255,255,0.24), transparent 22%, transparent 72%, rgba(255,255,255,0.08)),
+            repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 22px);
+          mix-blend-mode: screen;
+          opacity: 0.45;
+        }
+        .nexus-glass > * { position: relative; z-index: 1; }
+        .nexus-pill {
+          border: 1px solid rgba(125,211,252,0.22);
+          background: rgba(0,0,0,0.42);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 0 24px rgba(34,211,238,0.1);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+        }
+        .nexus-scanline {
+          background: linear-gradient(90deg, transparent, rgba(34,211,238,0.92), rgba(16,185,129,0.78), transparent);
+          animation: nexus-scan 4.8s ease-in-out infinite;
+        }
+        @keyframes nexus-scan {
+          0%, 100% { transform: translateX(-55%); opacity: 0.25; }
+          50% { transform: translateX(55%); opacity: 0.75; }
+        }
+      `}</style>
+
+      <div className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_center,rgba(8,47,73,0.28),transparent_42%),radial-gradient(circle_at_20%_20%,rgba(34,211,238,0.13),transparent_30%),radial-gradient(circle_at_80%_75%,rgba(16,185,129,0.12),transparent_32%)]" />
+
+      <div className="absolute inset-0 z-10">
+        <Canvas camera={{ position: [0, 0, 12.2], fov: 34 }}>
+          <ambientLight intensity={0.58 + activityScore * 0.045} />
+          <pointLight position={[10, 10, 10]} intensity={2.6 + activityScore * 0.18} />
+          <Globe />
+          {venuePositions.map(({ match, position }) => (
+            <MatchPin key={match.id} position={position} match={match} />
+          ))}
+          {venuePositions.slice(0, 9).map(({ position }, index, list) => {
+            const next = list[(index + 1) % list.length];
+            if (!next || list.length < 2) return null;
+            return <EnergyArc key={`arc-${index}`} start={position} end={next.position} intensity={activityScore} />;
+          })}
+          {liveOrFeaturedMatches.slice(0, 4).map((match, index) => (
+            <HologramCard
+              key={`holo-${match.id}`}
+              match={match}
+              position={[index % 2 === 0 ? -8.3 : 8.3, 2.75 - Math.floor(index / 2) * 3.35, -0.75]}
+            />
+          ))}
+          <Stars key={starCount} radius={300} depth={70} count={starCount + 900} factor={9 + activityScore * 0.42} saturation={0} fade speed={starSpeed} />
+          <OrbitControls enablePan={false} enableZoom autoRotate autoRotateSpeed={0.38 + activityScore * 0.035} />
+          <Environment preset="night" />
+        </Canvas>
+      </div>
+
+      <header className="fixed left-4 right-4 top-4 z-40 flex flex-wrap items-center justify-between gap-3 rounded-3xl nexus-glass px-5 py-3 md:left-6 md:right-6">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-emerald-400 rounded-full flex items-center justify-center">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-300 to-emerald-300 text-xl shadow-[0_0_30px_rgba(34,211,238,0.38)]">
             ⚽
           </div>
           <div>
-            <h1 className="text-3xl font-bold tracking-tighter">WC26 NEXUS</h1>
-            <p className="text-xs text-cyan-400">2026 WORLD CUP • IMMERSIVE ORBIT</p>
+            <h1 className="text-2xl font-black tracking-[-0.06em] md:text-3xl">WC26 NEXUS</h1>
+            <p className="text-[10px] uppercase tracking-[0.32em] text-cyan-200/80">World Cup command center</p>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 text-sm">
+        <nav className="flex flex-wrap gap-2 text-xs">
           {(['overview', 'groups', 'fixtures', 'bracket'] as ActiveTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-5 py-2 rounded-full transition-all uppercase tracking-widest text-sm ${
-                activeTab === tab ? 'bg-white text-black font-medium' : 'hover:bg-white/10'
+              className={`rounded-full px-4 py-2 uppercase tracking-[0.22em] transition-all ${
+                activeTab === tab ? 'bg-white text-black shadow-[0_0_22px_rgba(255,255,255,0.28)]' : 'nexus-pill text-white/75 hover:text-white'
               }`}
             >
               {tab}
             </button>
           ))}
-        </div>
+        </nav>
 
-        <div className="flex items-center gap-4 text-sm">
-          <StatusBadge status={status} lastUpdated={lastUpdated} />
-        </div>
-      </div>
+        <StatusBadge status={status} lastUpdated={lastUpdated} />
+      </header>
 
-      <div className="absolute inset-0 z-0">
-        <Canvas camera={{ position: [0, 0, 12.2], fov: 36 }}>
-          <ambientLight intensity={0.55 + activityScore * 0.045} />
-          <pointLight position={[10, 10, 10]} intensity={2.3 + activityScore * 0.18} />
-          <Globe />
-          {venuePositions.map(({ match, position }) => (
-            <MatchPin key={match.id} position={position} match={match} />
-          ))}
-          {venuePositions.slice(0, 8).map(({ position }, index, list) => {
-            const next = list[(index + 1) % list.length];
-            if (!next || list.length < 2) return null;
-            return <EnergyArc key={`arc-${index}`} start={position} end={next.position} intensity={activityScore} />;
-          })}
-          {liveOrFeaturedMatches.map((match, index) => (
-            <HologramCard key={`holo-${match.id}`} match={match} position={[index % 2 === 0 ? -7.8 : 7.8, 2.35 - Math.floor(index / 2) * 2.95, -0.65]} />
-          ))}
-          <Stars key={starCount} radius={300} depth={60} count={starCount + 600} factor={8 + activityScore * 0.35} saturation={0} fade speed={starSpeed} />
-          <OrbitControls enablePan={false} enableZoom autoRotate autoRotateSpeed={0.34 + activityScore * 0.035} />
-          <Environment preset="night" />
-        </Canvas>
-      </div>
-
-      <div className="absolute inset-0 z-10 pointer-events-none">
-        <div className="max-w-7xl mx-auto pt-36 md:pt-28 px-4 md:px-6 pb-28">
-          {activeTab === 'overview' && (
-            <div className="pointer-events-auto grid min-h-[calc(100vh-13rem)] grid-cols-1 items-center gap-6 lg:grid-cols-[330px_minmax(320px,1fr)_330px]">
-              <div className="space-y-4 self-center">
-                <div
-                  onClick={() => setActiveTab('fixtures')}
-                  className="bg-black/72 backdrop-blur-xl border border-cyan-300/60 rounded-3xl p-6 hover:border-emerald-300 cursor-pointer transition-all group shadow-[0_0_45px_rgba(34,211,238,0.22)]"
-                >
-                  <div className="flex justify-between items-start mb-5">
-                    <div>
-                      <div className="uppercase tracking-[3px] text-xs text-cyan-300">NEXT / FEED</div>
-                      <div className="text-2xl font-bold mt-1 group-hover:text-emerald-300 transition-colors">
-                        {nextMatch ? `${nextMatch.home} vs ${nextMatch.away}` : 'NO MATCH DATA'}
-                      </div>
-                    </div>
-                    <Trophy className="w-9 h-9 text-amber-300" />
-                  </div>
-                  <div className="text-5xl font-mono font-bold text-emerald-300 mb-2 drop-shadow-[0_0_20px_rgba(110,231,183,0.55)]">{nextMatchTime}</div>
-                  <div className="text-sm opacity-75">
-                    {nextMatch ? `${nextMatch.venue} • Group ${nextMatch.group} • Matchday ${nextMatch.matchday}` : 'Waiting for public API data'}
+      {activeTab === 'overview' && (
+        <main className="pointer-events-none fixed inset-0 z-30 grid grid-cols-1 gap-4 px-4 pb-24 pt-28 md:px-6 lg:grid-cols-[330px_minmax(520px,1fr)_330px] lg:gap-6">
+          <section className="pointer-events-auto flex flex-col gap-4 lg:pt-12">
+            <div onClick={() => setActiveTab('fixtures')} className="nexus-glass cursor-pointer rounded-3xl p-5 transition hover:border-emerald-300/70">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.34em] text-cyan-200">Next signal</div>
+                  <div className="mt-2 text-2xl font-black leading-tight text-white">
+                    {nextMatch ? `${nextMatch.home} vs ${nextMatch.away}` : 'No match data'}
                   </div>
                 </div>
-
-                <div className="bg-black/66 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-[0_0_35px_rgba(16,185,129,0.14)]">
-                  <div className="uppercase tracking-[3px] text-xs text-cyan-300">Tournament Signal</div>
-                  <div className="mt-2 text-5xl font-bold text-white">{activityScore.toFixed(1)}</div>
-                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-emerald-300" style={{ width: `${Math.min(100, activityScore * 10)}%` }} />
-                  </div>
-                  <div className="mt-3 text-xs uppercase tracking-widest text-white/55">Starfield + arc intensity</div>
-                </div>
+                <Trophy className="h-8 w-8 shrink-0 text-amber-300" />
               </div>
-
-              <div className="hidden lg:block min-h-[560px]" aria-hidden="true" />
-
-              <div className="space-y-4 self-center">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-black/66 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
-                    <div className="text-5xl font-bold mb-1">48</div>
-                    <div className="text-sm uppercase tracking-widest opacity-75">Teams</div>
-                  </div>
-                  <div className="bg-black/66 backdrop-blur-xl border border-white/10 rounded-3xl p-6">
-                    <div className="text-5xl font-bold mb-1">{matches.length || 104}</div>
-                    <div className="text-sm uppercase tracking-widest opacity-75">Matches loaded</div>
-                  </div>
-                </div>
-
-                <div className="bg-black/72 backdrop-blur-xl border border-cyan-300/30 rounded-3xl p-6 shadow-[0_0_45px_rgba(34,211,238,0.16)]">
-                  <div className="uppercase tracking-[3px] text-xs text-cyan-300 mb-4">Orbital Match Feed</div>
-                  <div className="space-y-3">
-                    {(liveOrFeaturedMatches.length ? liveOrFeaturedMatches : fixtureList.slice(0, 3)).map((match) => (
-                      <div key={`overview-${match.id}`} className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 px-4 py-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold">{match.home} vs {match.away}</div>
-                          <div className="text-xs uppercase tracking-widest text-white/50">Group {match.group} • {match.time}</div>
-                        </div>
-                        <div className="font-mono text-xl font-bold text-emerald-300">{match.score}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="text-center text-xs uppercase tracking-[0.26em] text-emerald-300">Cinematic globe 0.8.2.2 • no fake fallback scores</div>
+              <div className="font-mono text-5xl font-black text-emerald-300 drop-shadow-[0_0_18px_rgba(110,231,183,0.6)]">{nextMatchTime}</div>
+              <div className="mt-3 text-sm text-white/62">
+                {nextMatch ? `${nextMatch.venue} • Group ${nextMatch.group} • Matchday ${nextMatch.matchday}` : 'Waiting for public API data'}
               </div>
             </div>
-          )}
 
+            <div className="nexus-glass rounded-3xl p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="text-[10px] uppercase tracking-[0.34em] text-cyan-200">Live / upcoming feed</div>
+                <RefreshCw className="h-4 w-4 text-white/45" />
+              </div>
+              <div className="space-y-3">
+                {leftFeed.map((match) => (
+                  <button
+                    key={`feed-${match.id}`}
+                    onClick={() => setActiveTab('fixtures')}
+                    className="w-full rounded-2xl border border-white/8 bg-white/[0.045] px-4 py-3 text-left transition hover:border-cyan-200/45 hover:bg-white/[0.08]"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-bold">{match.home} vs {match.away}</div>
+                        <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-white/45">Group {match.group} • {match.time}</div>
+                      </div>
+                      <div className="font-mono text-xl font-black text-emerald-300">{match.score}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="pointer-events-none relative hidden items-end justify-center lg:flex">
+            <div className="absolute bottom-24 h-px w-[76%] overflow-hidden rounded-full bg-cyan-300/10">
+              <div className="nexus-scanline h-full w-full" />
+            </div>
+            <div className="mb-5 rounded-full nexus-pill px-6 py-3 text-center text-[10px] uppercase tracking-[0.36em] text-cyan-100/72">
+              Orbital visualization layer • pins • arcs • holograms
+            </div>
+          </section>
+
+          <section className="pointer-events-auto flex flex-col gap-4 lg:pt-12">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="nexus-glass rounded-3xl p-4 text-center">
+                <div className="text-3xl font-black">48</div>
+                <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-white/50">Teams</div>
+              </div>
+              <div className="nexus-glass rounded-3xl p-4 text-center">
+                <div className="text-3xl font-black">{completedMatches}</div>
+                <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-white/50">Finals</div>
+              </div>
+              <div className="nexus-glass rounded-3xl p-4 text-center">
+                <div className="text-3xl font-black">{totalGoals}</div>
+                <div className="mt-1 text-[10px] uppercase tracking-[0.22em] text-white/50">Goals</div>
+              </div>
+            </div>
+
+            <div className="nexus-glass rounded-3xl p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] uppercase tracking-[0.34em] text-cyan-200">Tournament signal</div>
+                  <div className="mt-1 text-sm text-white/52">Drives starfield and arc intensity</div>
+                </div>
+                <div className="font-mono text-3xl font-black text-emerald-300">{activityScore.toFixed(1)}</div>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-sky-200 to-emerald-300" style={{ width: `${Math.min(100, activityScore * 10)}%` }} />
+              </div>
+            </div>
+
+            <div className="nexus-glass rounded-3xl p-5">
+              <div className="mb-4 text-[10px] uppercase tracking-[0.34em] text-cyan-200">Group leaders</div>
+              <div className="space-y-3">
+                {rightStandings.map(([group, rows]) => {
+                  const leader = rows[0];
+                  return (
+                    <button
+                      key={`leader-${group}`}
+                      onClick={() => setActiveTab('groups')}
+                      className="flex w-full items-center justify-between rounded-2xl border border-white/8 bg-white/[0.045] px-4 py-3 text-left transition hover:border-cyan-200/45"
+                    >
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">Group {group}</div>
+                        <div className="text-sm font-bold">{leader?.teamName || 'Pending'}</div>
+                      </div>
+                      <div className="font-mono text-xl font-black text-emerald-300">{leader?.pts ?? 0}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        </main>
+      )}
+
+      {activeTab !== 'overview' && (
+        <main className="fixed inset-x-4 bottom-24 top-28 z-30 pointer-events-auto md:inset-x-6">
           {activeTab === 'groups' && (
-            <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-8 pointer-events-auto max-h-[72vh] overflow-auto">
-              <h2 className="text-3xl md:text-5xl font-bold mb-6">GROUP STAGE STANDINGS</h2>
-
+            <div className="nexus-glass h-full overflow-auto rounded-3xl p-6 md:p-8">
+              <h2 className="mb-6 text-3xl font-black md:text-5xl">GROUP STAGE STANDINGS</h2>
               {standingsByGroup.length === 0 ? (
                 <EmptyState title="No standings loaded" message="The public API did not return group table data." />
               ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
                   {standingsByGroup.map(([group, rows]) => (
-                    <div key={group} className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                      <h3 className="text-2xl font-bold text-cyan-400 mb-4">Group {group}</h3>
+                    <div key={group} className="rounded-3xl border border-white/10 bg-black/32 p-5">
+                      <h3 className="mb-4 text-2xl font-black text-cyan-200">Group {group}</h3>
                       <div className="overflow-x-auto">
                         <table className="w-full table-auto border-collapse text-sm">
                           <thead>
-                            <tr className="border-b border-white/10 text-white/60">
+                            <tr className="border-b border-white/10 text-white/56">
                               <th className="py-2 pr-3 text-left font-medium">Team</th>
                               {['MP', 'W', 'D', 'L', 'PTS', 'GF', 'GD'].map((header) => (
-                                <th key={header} className="py-2 px-2 text-right font-medium">
-                                  {header}
-                                </th>
+                                <th key={header} className="px-2 py-2 text-right font-medium">{header}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
                             {rows.map((row) => (
                               <tr key={`${group}-${row.teamId}`} className="border-b border-white/5 last:border-b-0">
-                                <td className="py-2 pr-3 text-left font-medium whitespace-nowrap">{row.teamName}</td>
-                                <td className="py-2 px-2 text-right">{row.mp}</td>
-                                <td className="py-2 px-2 text-right">{row.w}</td>
-                                <td className="py-2 px-2 text-right">{row.d}</td>
-                                <td className="py-2 px-2 text-right">{row.l}</td>
-                                <td className="py-2 px-2 text-right font-bold text-emerald-400">{row.pts}</td>
-                                <td className="py-2 px-2 text-right">{row.gf}</td>
-                                <td className="py-2 px-2 text-right">{row.gd}</td>
+                                <td className="whitespace-nowrap py-2 pr-3 text-left font-medium">{row.teamName}</td>
+                                <td className="px-2 py-2 text-right">{row.mp}</td>
+                                <td className="px-2 py-2 text-right">{row.w}</td>
+                                <td className="px-2 py-2 text-right">{row.d}</td>
+                                <td className="px-2 py-2 text-right">{row.l}</td>
+                                <td className="px-2 py-2 text-right font-black text-emerald-300">{row.pts}</td>
+                                <td className="px-2 py-2 text-right">{row.gf}</td>
+                                <td className="px-2 py-2 text-right">{row.gd}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -635,31 +729,31 @@ function WC26Nexus() {
           )}
 
           {activeTab === 'fixtures' && (
-            <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-8 pointer-events-auto max-h-[72vh] overflow-auto">
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-                <h2 className="text-3xl md:text-5xl font-bold">FIXTURES / RESULTS</h2>
-                <div className="flex items-center gap-2 text-sm opacity-75">
-                  <RefreshCw className="w-4 h-4" />
-                  refreshes every 60s
+            <div className="nexus-glass h-full overflow-auto rounded-3xl p-6 md:p-8">
+              <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+                <h2 className="text-3xl font-black md:text-5xl">FIXTURES / RESULTS</h2>
+                <div className="nexus-pill flex items-center gap-2 rounded-full px-4 py-2 text-sm text-white/70">
+                  <RefreshCw className="h-4 w-4" /> refreshes every 60s
                 </div>
               </div>
-
               {fixtureList.length === 0 ? (
                 <EmptyState title="No fixtures loaded" message="No fake scores are being shown. Check API availability or CORS." />
               ) : (
-                <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                   {fixtureList.map((match) => (
-                    <div key={match.id} className="flex flex-col gap-3 bg-white/5 p-5 rounded-2xl md:flex-row md:items-center md:justify-between">
-                      <div className="w-full text-center md:flex-1 md:text-right md:pr-6">
-                        <div className="font-semibold text-xl">{match.home}</div>
-                      </div>
-                      <div className="text-center px-6 md:min-w-36">
-                        <div className="text-4xl font-mono font-bold text-emerald-400">{match.score}</div>
-                        <div className="text-xs uppercase tracking-widest text-cyan-400">Group {match.group}</div>
-                        <div className="text-xs opacity-60 mt-1">{match.time}</div>
-                      </div>
-                      <div className="w-full text-center md:flex-1 md:text-left md:pl-6">
-                        <div className="font-semibold text-xl">{match.away}</div>
+                    <div key={match.id} className="rounded-3xl border border-white/10 bg-black/32 p-5">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0 flex-1 text-right">
+                          <div className="truncate text-xl font-bold">{match.home}</div>
+                        </div>
+                        <div className="min-w-32 text-center">
+                          <div className="font-mono text-4xl font-black text-emerald-300">{match.score}</div>
+                          <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">Group {match.group}</div>
+                          <div className="mt-1 text-xs text-white/52">{match.time}</div>
+                        </div>
+                        <div className="min-w-0 flex-1 text-left">
+                          <div className="truncate text-xl font-bold">{match.away}</div>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -669,23 +763,24 @@ function WC26Nexus() {
           )}
 
           {activeTab === 'bracket' && (
-            <div className="bg-black/70 backdrop-blur-xl border border-white/10 rounded-3xl p-10 text-center pointer-events-auto">
-              <h2 className="text-5xl font-bold mb-4">KNOCKOUT BRACKET</h2>
-              <p className="text-xl opacity-75">
-                The current public feed includes group fixtures/results and standings. Knockout bracket data will appear here when the API exposes knockout matches.
-              </p>
+            <div className="nexus-glass flex h-full items-center justify-center rounded-3xl p-8 text-center">
+              <div className="max-w-2xl">
+                <h2 className="mb-4 text-5xl font-black">KNOCKOUT BRACKET</h2>
+                <p className="text-xl text-white/72">
+                  The current public feed includes group fixtures/results and standings. Knockout bracket data will appear here when the API exposes knockout matches.
+                </p>
+              </div>
             </div>
           )}
-        </div>
-      </div>
+        </main>
+      )}
 
-      <div className="fixed bottom-4 left-1/2 w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 z-50 bg-black/80 backdrop-blur-md border border-cyan-500/30 px-5 py-3 rounded-2xl md:rounded-full flex flex-wrap items-center justify-center gap-4 md:gap-8 text-xs md:text-sm">
-        <div className="flex items-center gap-2">
-          <MapPin className="w-4 h-4" /> 16 Venues • 3 Countries
-        </div>
+      <footer className="fixed bottom-4 left-4 right-4 z-40 flex flex-wrap items-center justify-center gap-3 rounded-3xl nexus-glass px-5 py-3 text-xs md:gap-8 md:text-sm">
+        <div className="flex items-center gap-2"><MapPin className="h-4 w-4" /> 16 Venues • 3 Countries</div>
         <div>48 TEAMS • 12 GROUPS</div>
         <div>🇲🇽 🇺🇸 🇨🇦 HOSTS</div>
-      </div>
+        <div className="hidden text-emerald-300 md:block">Glass command layout • 0.8.3 prep</div>
+      </footer>
     </div>
   );
 }
