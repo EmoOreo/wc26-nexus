@@ -259,7 +259,7 @@ function MatchPin({ position, live, intensity }: { position: [number, number, nu
 }
 
 function EnergyArc({ index, active }: { index: number; active: boolean }) {
-  const ref = useRef<any>(null);
+  const ref = useRef<THREE.Line>(null);
   const pulse = useRef<THREE.Mesh>(null);
 
   const curve = useMemo(() => {
@@ -296,12 +296,17 @@ function EnergyArc({ index, active }: { index: number; active: boolean }) {
 }
 
 function HologramCard({ match, index }: { match: Match; index: number }) {
-  const angle = (index / 6) * Math.PI * 2;
-  const radius = 5.25;
-  const y = index % 2 === 0 ? 2.55 : -2.35;
+  const cardPositions: [number, number, number][] = [
+    [-3.55, 2.45, 0.35],
+    [3.55, 2.15, 0.35],
+    [-3.85, -2.2, 0.35],
+    [3.85, -1.85, 0.35],
+    [0, 3.25, 0.35],
+  ];
+  const position = cardPositions[index % cardPositions.length];
 
   return (
-    <Html position={[Math.cos(angle) * radius, y, Math.sin(angle) * 2.2]} center distanceFactor={8} transform>
+    <Html position={position} center distanceFactor={8}>
       <div
         style={{
           minWidth: 160,
@@ -552,7 +557,7 @@ export default function WC26Nexus() {
           </div>
         </header>
 
-        <main style={{ display: 'grid', gridTemplateColumns: '320px minmax(480px, 1fr) 340px', gap: 14, minHeight: 0 }}>
+        <main style={{ display: 'grid', gridTemplateColumns: '320px minmax(520px, 1fr) 400px', gap: 14, minHeight: 0 }}>
           <aside style={{ ...glass, borderRadius: 22, padding: 16, minHeight: 0, display: 'grid', gridTemplateRows: 'auto auto 1fr', gap: 14 }}>
             <section style={{ borderBottom: '1px solid rgba(148,163,184,.16)', paddingBottom: 14 }}>
               <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>Next Signal</div>
@@ -585,8 +590,8 @@ export default function WC26Nexus() {
 
           <section style={{ ...glass, borderRadius: 26, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 3 }}>
-              <div style={{ color: '#67e8f9', fontSize: 12, letterSpacing: 1.8, textTransform: 'uppercase', fontWeight: 900 }}>Orbital Visualization Layer</div>
-              <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>pins • arcs • holograms • reactive starfield</div>
+              <div style={{ color: '#67e8f9', fontSize: 12, letterSpacing: 1.8, textTransform: 'uppercase', fontWeight: 900 }}>Live Orbital Feed</div>
+              <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>real-time match orbit • venue pulses • score signals</div>
             </div>
             <div style={{ position: 'absolute', top: 18, right: 20, zIndex: 3, color: '#94a3b8', fontSize: 12, textAlign: 'right' }}>
               <RefreshCw size={14} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 4 }} /> refreshes every 60s
@@ -610,8 +615,13 @@ export default function WC26Nexus() {
             </section>
 
             <section style={{ ...glass, borderRadius: 16, padding: 12 }}>
-              <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>MatchIQ Ready</div>
-              <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 6, lineHeight: 1.45 }}>Next layer: squads, coaches, referees, stats, buzz feed, and match intelligence panels.</div>
+              <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>Tournament Intel</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 6, columnGap: 12, color: '#cbd5e1', fontSize: 12, marginTop: 10 }}>
+                <span>MatchIQ news</span><strong style={{ color: news.length ? '#34d399' : '#94a3b8' }}>{news.length ? 'Online' : 'Standby'}</strong>
+                <span>Squad / coach data</span><strong style={{ color: '#34d399' }}>Available</strong>
+                <span>Basic match stats</span><strong style={{ color: '#34d399' }}>Available</strong>
+                <span>Live timeline feed</span><strong style={{ color: '#fbbf24' }}>Pending</strong>
+              </div>
             </section>
           </aside>
         </main>
