@@ -259,7 +259,7 @@ function MatchPin({ position, live, intensity }: { position: [number, number, nu
 }
 
 function EnergyArc({ index, active }: { index: number; active: boolean }) {
-  const ref = useRef<THREE.Line>(null);
+  const ref = useRef<any>(null);
   const pulse = useRef<THREE.Mesh>(null);
 
   const curve = useMemo(() => {
