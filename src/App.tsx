@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Html, OrbitControls, Stars, Environment } from '@react-three/drei';
-import { Activity, Newspaper, Play, RefreshCw, Shield, Trophy, WifiOff } from 'lucide-react';
+import { Activity, Info, Newspaper, Play, RefreshCw, Shield, Trophy, Users, WifiOff, X } from 'lucide-react';
 import * as THREE from 'three';
 
 type DataStatus = 'loading' | 'public-api' | 'no-data' | 'api-error';
+type MobileView = 'overview' | 'matches' | 'globe' | 'groups' | 'intel';
 
 interface RawGame {
   id?: string | number;
@@ -310,26 +311,67 @@ function normalizeStandings(groups: RawGroup[], teamNames: Map<string, string>):
   });
 }
 
-function Globe() {
-  const ref = useRef<THREE.Mesh>(null);
+function SurfacePatch({ theta, phi, radius, size, segments, color, opacity = 0.92 }: { theta: number; phi: number; radius: number; size: number; segments: number; color: string; opacity?: number }) {
+  const normal = useMemo(() => new THREE.Vector3(
+    Math.sin(phi) * Math.cos(theta),
+    Math.cos(phi),
+    Math.sin(phi) * Math.sin(theta),
+  ).normalize(), [theta, phi]);
+  const position = useMemo(() => normal.clone().multiplyScalar(radius), [normal, radius]);
+  const quaternion = useMemo(() => new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal), [normal]);
+
+  return (
+    <group position={[position.x, position.y, position.z]} quaternion={quaternion}>
+      <mesh>
+        <circleGeometry args={[size, segments]} />
+        <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} />
+      </mesh>
+    </group>
+  );
+}
+
+function ProceduralSoccerBall({ compact = false }: { compact?: boolean }) {
+  const ref = useRef<THREE.Group>(null);
+  const radius = compact ? 2.75 : 3.32;
+
+  const pentagons = useMemo(() => [
+    [0, 0.18], [0, 2.96],
+    [0, 1.02], [1.26, 1.02], [2.52, 1.02], [3.78, 1.02], [5.04, 1.02],
+    [0.63, 2.12], [1.89, 2.12], [3.15, 2.12], [4.41, 2.12], [5.67, 2.12],
+  ] as Array<[number, number]>, []);
+
+  const hexes = useMemo(() => [
+    [0.58, 0.62], [1.84, 0.62], [3.10, 0.62], [4.36, 0.62], [5.62, 0.62],
+    [0.32, 1.55], [1.10, 1.55], [1.88, 1.55], [2.66, 1.55], [3.44, 1.55], [4.22, 1.55], [5.00, 1.55], [5.78, 1.55],
+    [0.95, 2.52], [2.21, 2.52], [3.47, 2.52], [4.73, 2.52], [5.99, 2.52],
+  ] as Array<[number, number]>, []);
 
   useFrame((_, delta) => {
-    if (ref.current) ref.current.rotation.y += delta * 0.08;
+    if (ref.current) {
+      ref.current.rotation.y += delta * 0.07;
+      ref.current.rotation.x = Math.sin(Date.now() * 0.00022) * 0.045;
+    }
   });
 
   return (
-    <group>
-      <mesh ref={ref}>
-        <sphereGeometry args={[3.55, 96, 96]} />
-        <meshStandardMaterial color="#062c88" emissive="#061f55" metalness={0.72} roughness={0.18} />
+    <group ref={ref}>
+      <mesh>
+        <sphereGeometry args={[radius, 112, 112]} />
+        <meshStandardMaterial color="#0b2f8f" emissive="#061f55" emissiveIntensity={0.45} metalness={0.62} roughness={0.21} />
       </mesh>
+      {hexes.map(([theta, phi], index) => (
+        <SurfacePatch key={`hex-${index}`} theta={theta} phi={phi} radius={radius + 0.012} size={compact ? 0.28 : 0.36} segments={6} color="#e0f2fe" opacity={0.16} />
+      ))}
+      {pentagons.map(([theta, phi], index) => (
+        <SurfacePatch key={`pent-${index}`} theta={theta} phi={phi} radius={radius + 0.018} size={compact ? 0.26 : 0.34} segments={5} color={index % 3 === 0 ? '#67e8f9' : '#020617'} opacity={index % 3 === 0 ? 0.62 : 0.84} />
+      ))}
       <mesh scale={1.08}>
-        <sphereGeometry args={[3.55, 96, 96]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.075} side={THREE.BackSide} />
+        <sphereGeometry args={[radius, 96, 96]} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.07} side={THREE.BackSide} />
       </mesh>
-      <mesh scale={1.22}>
-        <sphereGeometry args={[3.55, 96, 96]} />
-        <meshBasicMaterial color="#14b8a6" transparent opacity={0.035} side={THREE.BackSide} />
+      <mesh scale={1.2}>
+        <sphereGeometry args={[radius, 96, 96]} />
+        <meshBasicMaterial color="#14b8a6" transparent opacity={0.03} side={THREE.BackSide} />
       </mesh>
     </group>
   );
@@ -445,7 +487,7 @@ function GlobeScene({ matches, activity, compact = false }: { matches: Match[]; 
       <pointLight position={[8, 9, 10]} intensity={1.6} />
       <pointLight position={[-8, -4, 6]} intensity={0.65} color="#22d3ee" />
       <group scale={compact ? 0.82 : 1}>
-        <Globe />
+        <ProceduralSoccerBall compact={compact} />
       </group>
       {Array.from({ length: 8 }).map((_, index) => (
         <EnergyArc key={index} index={index} active={activity > 1 || active} />
@@ -493,21 +535,21 @@ function MetricCard({ label, value }: { label: string; value: string | number })
   );
 }
 
-function MatchRow({ match }: { match: Match }) {
+function MatchRow({ match, onSelect }: { match: Match; onSelect?: () => void }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 10, alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(148,163,184,.16)' }}>
+    <button type="button" onClick={onSelect} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 10, alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(148,163,184,.16)', background: 'transparent', color: 'inherit', borderLeft: 0, borderRight: 0, borderTop: 0, width: '100%', cursor: onSelect ? 'pointer' : 'default', font: 'inherit' }}>
       <div style={{ textAlign: 'right', fontWeight: 700, fontSize: 13 }}>{match.home}</div>
       <div style={{ textAlign: 'center' }}>
         <div style={{ color: '#34d399', fontWeight: 900, fontSize: 18 }}>{match.score}</div>
         <div style={{ color: '#67e8f9', fontSize: 10, textTransform: 'uppercase' }}>G{match.group} • {match.time}</div>
       </div>
       <div style={{ fontWeight: 700, fontSize: 13 }}>{match.away}</div>
-    </div>
+    </button>
   );
 }
 
-function StandingTable({ group, rows }: { group: string; rows: GroupStanding[] }) {
-  return (
+function StandingTable({ group, rows, compact = false }: { group: string; rows: GroupStanding[]; compact?: boolean }) {
+  const body = (
     <div style={{ padding: '12px 0', borderBottom: '1px solid rgba(148,163,184,.16)' }}>
       <div style={{ color: '#67e8f9', fontWeight: 800, marginBottom: 8 }}>Group {group}</div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 26px 26px 26px 32px', gap: 5, color: '#94a3b8', fontSize: 11, fontWeight: 800 }}>
@@ -524,6 +566,99 @@ function StandingTable({ group, rows }: { group: string; rows: GroupStanding[] }
       ))}
     </div>
   );
+
+  if (compact) {
+    return (
+      <details open={group === 'A'} style={{ borderBottom: '1px solid rgba(148,163,184,.16)', padding: '8px 0' }}>
+        <summary style={{ color: '#67e8f9', fontWeight: 900, cursor: 'pointer', listStyle: 'none' }}>Group {group} • {rows[0]?.teamName || 'Standings'}</summary>
+        {body}
+      </details>
+    );
+  }
+
+  return body;
+}
+
+function MobileNav({ view, setView }: { view: MobileView; setView: (view: MobileView) => void }) {
+  const items: Array<[MobileView, string, string]> = [
+    ['overview', 'Home', '⌂'],
+    ['matches', 'Matches', '⚽'],
+    ['globe', 'Orbit', '◉'],
+    ['groups', 'Groups', '▤'],
+    ['intel', 'Intel', '◇'],
+  ];
+
+  return (
+    <nav style={{ ...glass, position: 'sticky', bottom: 10, zIndex: 20, marginTop: 10, borderRadius: 22, padding: 6, display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
+      {items.map(([key, label, icon]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => setView(key)}
+          style={{
+            border: 0,
+            borderRadius: 16,
+            padding: '8px 4px',
+            background: view === key ? 'rgba(34,211,238,.18)' : 'transparent',
+            color: view === key ? '#67e8f9' : '#cbd5e1',
+            fontSize: 11,
+            fontWeight: 800,
+            display: 'grid',
+            gap: 2,
+            placeItems: 'center',
+          }}
+        >
+          <span style={{ fontSize: 16 }}>{icon}</span>
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function MatchDetailDrawer({ match, details, onClose }: { match: Match | null; details: MatchIqDetails | null; onClose: () => void }) {
+  if (!match) return null;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(2,6,23,.58)', display: 'grid', alignItems: 'end' }} onClick={onClose}>
+      <section onClick={(event) => event.stopPropagation()} style={{ ...glass, borderRadius: '24px 24px 0 0', padding: 18, maxHeight: '78vh', overflow: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>Match Detail</div>
+            <h2 style={{ margin: '6px 0 0', fontSize: 22 }}>{match.home} <span style={{ color: '#34d399' }}>{match.score}</span> {match.away}</h2>
+            <div style={{ color: '#94a3b8', fontSize: 13, marginTop: 4 }}>{match.venue} • Group {match.group} • {match.time}</div>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: 'rgba(148,163,184,.12)', color: '#e2e8f0', border: '1px solid rgba(148,163,184,.22)', borderRadius: 12, padding: 8 }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 16 }}>
+          <MetricCard label="Goals" value={match.goals} />
+          <MetricCard label="Status" value={match.time} />
+        </div>
+
+        <div style={{ marginTop: 16, display: 'grid', gap: 8, color: '#cbd5e1', fontSize: 13 }}>
+          {details?.referee && <div><strong style={{ color: '#67e8f9' }}>Referee:</strong> {details.referee}</div>}
+          {details?.home_lineup?.coach && <div><strong style={{ color: '#67e8f9' }}>Home coach:</strong> {details.home_lineup.coach}</div>}
+          {details?.away_lineup?.coach && <div><strong style={{ color: '#67e8f9' }}>Away coach:</strong> {details.away_lineup.coach}</div>}
+          {details?.note && <div style={{ color: '#94a3b8' }}>{details.note}</div>}
+        </div>
+
+        {details?.stats && details.stats.length > 0 && (
+          <div style={{ marginTop: 16, borderTop: '1px solid rgba(148,163,184,.16)', paddingTop: 12 }}>
+            <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 8 }}>MatchIQ Stats</div>
+            {details.stats.map((stat) => (
+              <div key={stat.label} style={{ display: 'grid', gridTemplateColumns: '1fr auto', padding: '6px 0', color: '#cbd5e1', borderBottom: '1px solid rgba(148,163,184,.10)' }}>
+                <span>{stat.label}</span>
+                <strong>{stat.home} - {stat.away}</strong>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
 }
 
 export default function WC26Nexus() {
@@ -533,6 +668,9 @@ export default function WC26Nexus() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [matchIqToday, setMatchIqToday] = useState<Match[]>([]);
   const [matchIqDetails, setMatchIqDetails] = useState<MatchIqDetails | null>(null);
+  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [selectedDetails, setSelectedDetails] = useState<MatchIqDetails | null>(null);
+  const [mobileView, setMobileView] = useState<MobileView>('overview');
   const [status, setStatus] = useState<DataStatus>('loading');
   const [lastUpdated, setLastUpdated] = useState('');
   const isCompact = useIsCompactLayout();
@@ -684,8 +822,37 @@ export default function WC26Nexus() {
     return () => window.clearInterval(interval);
   }, [matches, nextMatch, status]);
 
+  useEffect(() => {
+    if (!selectedMatch) {
+      setSelectedDetails(null);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchSelectedDetails = async () => {
+      try {
+        const response = await fetch(`${MATCHIQ_BASE}/api/matches/${selectedMatch.id}/details`, { cache: 'no-store' });
+        if (!response.ok) return;
+        const details = await response.json();
+        if (!cancelled) setSelectedDetails(details);
+      } catch (error) {
+        console.warn('Selected MatchIQ details unavailable:', error);
+      }
+    };
+
+    fetchSelectedDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedMatch]);
+
+  const showLeft = !isCompact || mobileView === 'overview' || mobileView === 'matches';
+  const showGlobe = !isCompact || mobileView === 'overview' || mobileView === 'globe';
+  const showRight = !isCompact || mobileView === 'overview' || mobileView === 'groups' || mobileView === 'intel';
+  const showFooter = !isCompact || mobileView === 'overview' || mobileView === 'intel';
+
   return (
-    <div style={{ minHeight: '100vh', maxHeight: isCompact ? 'none' : '100vh', overflow: isCompact ? 'auto' : 'hidden', background: '#020617', color: '#f8fafc', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', position: 'relative' }}>
+    <div style={{ minHeight: '100vh', maxHeight: isCompact ? 'none' : '100vh', overflow: isCompact ? 'auto' : 'hidden', background: '#020617', color: '#f8fafc', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', position: 'relative', paddingBottom: isCompact ? 84 : 0 }}>
       <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 42%, rgba(14,165,233,.20), transparent 38%), radial-gradient(circle at 85% 20%, rgba(16,185,129,.10), transparent 28%), linear-gradient(135deg, #020617 0%, #07111f 55%, #021716 100%)' }} />
       <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(103,232,249,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(103,232,249,.045) 1px, transparent 1px)', backgroundSize: '42px 42px', opacity: 0.72 }} />
 
@@ -708,7 +875,7 @@ export default function WC26Nexus() {
         </header>
 
         <main style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '320px minmax(520px, 1fr) 400px', gridTemplateRows: isCompact ? 'auto auto auto' : undefined, gap: isCompact ? 10 : 14, minHeight: 0 }}>
-          <aside style={{ ...glass, borderRadius: 22, padding: isCompact ? 12 : 16, minHeight: 0, maxHeight: isCompact ? 'none' : undefined, display: 'grid', gridTemplateRows: isCompact ? 'auto auto auto' : 'auto auto 1fr', gap: 14 }}>
+          {showLeft && <aside style={{ ...glass, borderRadius: 22, padding: isCompact ? 12 : 16, minHeight: 0, maxHeight: isCompact ? 'none' : undefined, display: 'grid', gridTemplateRows: isCompact ? 'auto auto auto' : 'auto auto 1fr', gap: 14 }}>
             <section style={{ borderBottom: '1px solid rgba(148,163,184,.16)', paddingBottom: 14 }}>
               <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>Next Signal</div>
               <div style={{ marginTop: 10, fontSize: 20, fontWeight: 850 }}>{nextMatch ? `${nextMatch.home} vs ${nextMatch.away}` : 'No match data'}</div>
@@ -733,15 +900,15 @@ export default function WC26Nexus() {
               {fixtureList.length === 0 ? (
                 <div style={{ color: '#94a3b8', fontSize: 13 }}>No fixtures loaded.</div>
               ) : (
-                fixtureList.slice(0, 8).map((match) => <MatchRow key={match.id} match={match} />)
+                fixtureList.slice(0, 8).map((match) => <MatchRow key={match.id} match={match} onSelect={() => setSelectedMatch(match)} />)
               )}
             </section>
-          </aside>
+          </aside>}
 
-          <section style={{ ...glass, borderRadius: 26, minHeight: 0, height: isCompact ? 340 : 'auto', position: 'relative', overflow: 'hidden' }}>
+          {showGlobe && <section style={{ ...glass, borderRadius: 26, minHeight: 0, height: isCompact ? 300 : 'auto', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 3 }}>
               <div style={{ color: '#67e8f9', fontSize: 12, letterSpacing: 1.8, textTransform: 'uppercase', fontWeight: 900 }}>Live Orbital Feed</div>
-              <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>real-time match orbit • venue pulses • score signals</div>
+              {!isCompact && <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>real-time match orbit • venue pulses • procedural ball core</div>}
             </div>
             <div style={{ position: 'absolute', top: 18, right: 20, zIndex: 3, color: '#94a3b8', fontSize: 12, textAlign: 'right' }}>
               <RefreshCw size={14} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 4 }} /> refreshes every 60s
@@ -754,9 +921,9 @@ export default function WC26Nexus() {
               </div>
             )}
             <GlobeScene matches={fixtureList} activity={activity} compact={isCompact} />
-          </section>
+          </section>}
 
-          <aside style={{ ...glass, borderRadius: 22, padding: isCompact ? 12 : 16, minHeight: 0, display: 'grid', gridTemplateRows: isCompact ? 'auto auto auto' : 'auto 1fr auto', gap: 14 }}>
+          {showRight && <aside style={{ ...glass, borderRadius: 22, padding: isCompact ? 12 : 16, minHeight: 0, display: 'grid', gridTemplateRows: isCompact ? 'auto auto auto' : 'auto 1fr auto', gap: 14 }}>
             <section>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>
                 <Shield size={14} /> Group Standings
@@ -767,7 +934,7 @@ export default function WC26Nexus() {
               {standingsByGroup.length === 0 ? (
                 <div style={{ color: '#94a3b8', fontSize: 13 }}>No standings loaded.</div>
               ) : (
-                standingsByGroup.map(([group, rows]) => <StandingTable key={group} group={group} rows={rows} />)
+                standingsByGroup.map(([group, rows]) => <StandingTable key={group} group={group} rows={rows} compact={isCompact} />)
               )}
             </section>
 
@@ -796,10 +963,10 @@ export default function WC26Nexus() {
                 </div>
               )}
             </section>
-          </aside>
+          </aside>}
         </main>
 
-        <footer style={{ ...glass, borderRadius: 18, display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '180px 1fr', alignItems: 'center', overflow: 'hidden', gap: isCompact ? 8 : 0, padding: isCompact ? '10px 0' : 0 }}>
+        {showFooter && <footer style={{ ...glass, borderRadius: 18, display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '180px 1fr', alignItems: 'center', overflow: 'hidden', gap: isCompact ? 8 : 0, padding: isCompact ? '10px 0' : 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 16, color: '#67e8f9', fontWeight: 900, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12 }}>
             <Newspaper size={15} /> Tournament Buzz
           </div>
@@ -808,8 +975,10 @@ export default function WC26Nexus() {
               .map((item) => `${item.source ? item.source + ': ' : ''}${item.title}`)
               .join('   •   ')}
           </div>
-        </footer>
+        </footer>}
+        {isCompact && <MobileNav view={mobileView} setView={setMobileView} />}
       </div>
+      <MatchDetailDrawer match={selectedMatch} details={selectedDetails || (selectedMatch?.id === matchIqDetails?.match_id ? matchIqDetails : null)} onClose={() => setSelectedMatch(null)} />
     </div>
   );
 }
