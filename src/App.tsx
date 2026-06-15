@@ -91,6 +91,22 @@ const glass: React.CSSProperties = {
   backdropFilter: 'blur(18px)',
 };
 
+function useIsCompactLayout() {
+  const [isCompact, setIsCompact] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 980;
+  });
+
+  useEffect(() => {
+    const update = () => setIsCompact(window.innerWidth < 980);
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  return isCompact;
+}
+
 function asArray<T>(data: unknown, key: string): T[] {
   if (Array.isArray(data)) return data as T[];
   if (data && typeof data === 'object' && Array.isArray((data as Record<string, unknown>)[key])) {
@@ -259,7 +275,7 @@ function MatchPin({ position, live, intensity }: { position: [number, number, nu
 }
 
 function EnergyArc({ index, active }: { index: number; active: boolean }) {
-  const ref = useRef<THREE.Line>(null);
+  const groupRef = useRef<THREE.Group>(null);
   const pulse = useRef<THREE.Mesh>(null);
 
   const curve = useMemo(() => {
@@ -274,7 +290,7 @@ function EnergyArc({ index, active }: { index: number; active: boolean }) {
   const points = useMemo(() => curve.getPoints(80), [curve]);
 
   useFrame(({ clock }) => {
-    if (ref.current) ref.current.rotation.y += 0.0009 * (index % 2 === 0 ? 1 : -1);
+    if (groupRef.current) groupRef.current.rotation.y += 0.0009 * (index % 2 === 0 ? 1 : -1);
     if (pulse.current) {
       const t = (clock.elapsedTime * (active ? 0.34 : 0.18) + index * 0.13) % 1;
       pulse.current.position.copy(curve.getPointAt(t));
@@ -282,8 +298,8 @@ function EnergyArc({ index, active }: { index: number; active: boolean }) {
   });
 
   return (
-    <group>
-      <line ref={ref}>
+    <group ref={groupRef}>
+      <line>
         <bufferGeometry attach="geometry" setFromPoints={points} />
         <lineBasicMaterial attach="material" color={active ? '#67e8f9' : '#38bdf8'} transparent opacity={active ? 0.72 : 0.34} />
       </line>
@@ -333,8 +349,8 @@ function HologramCard({ match, index }: { match: Match; index: number }) {
   );
 }
 
-function GlobeScene({ matches, activity }: { matches: Match[]; activity: number }) {
-  const visible = matches.slice(0, 10);
+function GlobeScene({ matches, activity, compact = false }: { matches: Match[]; activity: number; compact?: boolean }) {
+  const visible = matches.slice(0, compact ? 6 : 10);
   const active = visible.some((match) => !match.finished);
 
   return (
@@ -342,7 +358,9 @@ function GlobeScene({ matches, activity }: { matches: Match[]; activity: number 
       <ambientLight intensity={0.58} />
       <pointLight position={[8, 9, 10]} intensity={1.6} />
       <pointLight position={[-8, -4, 6]} intensity={0.65} color="#22d3ee" />
-      <Globe />
+      <group scale={compact ? 0.82 : 1}>
+        <Globe />
+      </group>
       {Array.from({ length: 8 }).map((_, index) => (
         <EnergyArc key={index} index={index} active={activity > 1 || active} />
       ))}
@@ -357,7 +375,7 @@ function GlobeScene({ matches, activity }: { matches: Match[]; activity: number 
           />
         );
       })}
-      {visible.slice(0, 5).map((match, index) => (
+      {!compact && visible.slice(0, 5).map((match, index) => (
         <HologramCard key={`h-${match.id}`} match={match} index={index} />
       ))}
       <Stars radius={320} depth={80} count={900 + Math.round(activity * 140)} factor={4.6 + activity * 0.25} saturation={0} fade speed={0.45 + activity * 0.08} />
@@ -429,6 +447,7 @@ export default function WC26Nexus() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [status, setStatus] = useState<DataStatus>('loading');
   const [lastUpdated, setLastUpdated] = useState('');
+  const isCompact = useIsCompactLayout();
 
   const fixtureList = useMemo(() => [...matches].sort((a, b) => a.sortTime - b.sortTime).slice(0, 12), [matches]);
   const completedMatches = useMemo(() => matches.filter((match) => match.finished).length, [matches]);
@@ -535,12 +554,12 @@ export default function WC26Nexus() {
   }, [matches, nextMatch, status]);
 
   return (
-    <div style={{ minHeight: '100vh', maxHeight: '100vh', overflow: 'hidden', background: '#020617', color: '#f8fafc', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', position: 'relative' }}>
+    <div style={{ minHeight: '100vh', maxHeight: isCompact ? 'none' : '100vh', overflow: isCompact ? 'auto' : 'hidden', background: '#020617', color: '#f8fafc', fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif', position: 'relative' }}>
       <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 50% 42%, rgba(14,165,233,.20), transparent 38%), radial-gradient(circle at 85% 20%, rgba(16,185,129,.10), transparent 28%), linear-gradient(135deg, #020617 0%, #07111f 55%, #021716 100%)' }} />
       <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(rgba(103,232,249,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(103,232,249,.045) 1px, transparent 1px)', backgroundSize: '42px 42px', opacity: 0.72 }} />
 
-      <div style={{ position: 'relative', zIndex: 2, height: '100vh', display: 'grid', gridTemplateRows: '72px 1fr 64px', padding: 18, gap: 14 }}>
-        <header style={{ ...glass, borderRadius: 18, display: 'grid', gridTemplateColumns: '300px 1fr 300px', alignItems: 'center', padding: '0 18px' }}>
+      <div style={{ position: 'relative', zIndex: 2, minHeight: '100vh', height: isCompact ? 'auto' : '100vh', display: 'grid', gridTemplateRows: isCompact ? 'auto auto auto' : '72px 1fr 64px', padding: isCompact ? 10 : 18, gap: isCompact ? 10 : 14 }}>
+        <header style={{ ...glass, borderRadius: 18, display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '300px 1fr 300px', alignItems: 'center', padding: isCompact ? '14px' : '0 18px', gap: isCompact ? 12 : 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 38, height: 38, borderRadius: 999, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg, #22d3ee, #34d399)', boxShadow: '0 0 26px rgba(34,211,238,.45)' }}>⚽</div>
             <div>
@@ -551,14 +570,14 @@ export default function WC26Nexus() {
           <div style={{ textAlign: 'center' }}>
             <StatusBadge status={status} lastUpdated={lastUpdated} />
           </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 8, justifyContent: isCompact ? 'center' : 'flex-end' }}>
             <MetricCard label="Matches" value={matches.length || 104} />
             <MetricCard label="Goals" value={totalGoals} />
           </div>
         </header>
 
-        <main style={{ display: 'grid', gridTemplateColumns: '320px minmax(520px, 1fr) 400px', gap: 14, minHeight: 0 }}>
-          <aside style={{ ...glass, borderRadius: 22, padding: 16, minHeight: 0, display: 'grid', gridTemplateRows: 'auto auto 1fr', gap: 14 }}>
+        <main style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '320px minmax(520px, 1fr) 400px', gridTemplateRows: isCompact ? 'auto 58vh auto' : undefined, gap: isCompact ? 10 : 14, minHeight: 0 }}>
+          <aside style={{ ...glass, borderRadius: 22, padding: isCompact ? 12 : 16, minHeight: 0, maxHeight: isCompact ? 'none' : undefined, display: 'grid', gridTemplateRows: isCompact ? 'auto auto auto' : 'auto auto 1fr', gap: 14 }}>
             <section style={{ borderBottom: '1px solid rgba(148,163,184,.16)', paddingBottom: 14 }}>
               <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>Next Signal</div>
               <div style={{ marginTop: 10, fontSize: 20, fontWeight: 850 }}>{nextMatch ? `${nextMatch.home} vs ${nextMatch.away}` : 'No match data'}</div>
@@ -576,7 +595,7 @@ export default function WC26Nexus() {
               <MetricCard label="Signal" value={activity.toFixed(1)} />
             </section>
 
-            <section style={{ minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
+            <section style={{ minHeight: 0, overflow: 'auto', maxHeight: isCompact ? 320 : undefined, paddingRight: 4 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 8 }}>
                 <Activity size={14} /> Live / Upcoming Feed
               </div>
@@ -588,7 +607,7 @@ export default function WC26Nexus() {
             </section>
           </aside>
 
-          <section style={{ ...glass, borderRadius: 26, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
+          <section style={{ ...glass, borderRadius: 26, minHeight: 0, height: isCompact ? '58vh' : 'auto', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 3 }}>
               <div style={{ color: '#67e8f9', fontSize: 12, letterSpacing: 1.8, textTransform: 'uppercase', fontWeight: 900 }}>Live Orbital Feed</div>
               <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>real-time match orbit • venue pulses • score signals</div>
@@ -596,17 +615,17 @@ export default function WC26Nexus() {
             <div style={{ position: 'absolute', top: 18, right: 20, zIndex: 3, color: '#94a3b8', fontSize: 12, textAlign: 'right' }}>
               <RefreshCw size={14} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 4 }} /> refreshes every 60s
             </div>
-            <GlobeScene matches={fixtureList} activity={activity} />
+            <GlobeScene matches={fixtureList} activity={activity} compact={isCompact} />
           </section>
 
-          <aside style={{ ...glass, borderRadius: 22, padding: 16, minHeight: 0, display: 'grid', gridTemplateRows: 'auto 1fr auto', gap: 14 }}>
+          <aside style={{ ...glass, borderRadius: 22, padding: isCompact ? 12 : 16, minHeight: 0, display: 'grid', gridTemplateRows: isCompact ? 'auto auto auto' : 'auto 1fr auto', gap: 14 }}>
             <section>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>
                 <Shield size={14} /> Group Standings
               </div>
             </section>
 
-            <section style={{ minHeight: 0, overflow: 'auto', paddingRight: 4 }}>
+            <section style={{ minHeight: 0, overflow: 'auto', maxHeight: isCompact ? 420 : undefined, paddingRight: 4 }}>
               {standingsByGroup.length === 0 ? (
                 <div style={{ color: '#94a3b8', fontSize: 13 }}>No standings loaded.</div>
               ) : (
@@ -626,7 +645,7 @@ export default function WC26Nexus() {
           </aside>
         </main>
 
-        <footer style={{ ...glass, borderRadius: 18, display: 'grid', gridTemplateColumns: '180px 1fr', alignItems: 'center', overflow: 'hidden' }}>
+        <footer style={{ ...glass, borderRadius: 18, display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '180px 1fr', alignItems: 'center', overflow: 'hidden', gap: isCompact ? 8 : 0, padding: isCompact ? '10px 0' : 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 16, color: '#67e8f9', fontWeight: 900, letterSpacing: 1.2, textTransform: 'uppercase', fontSize: 12 }}>
             <Newspaper size={15} /> Tournament Buzz
           </div>
