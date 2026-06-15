@@ -675,7 +675,18 @@ export default function WC26Nexus() {
   const [lastUpdated, setLastUpdated] = useState('');
   const isCompact = useIsCompactLayout();
 
-  const fixtureList = useMemo(() => [...matches].sort((a, b) => a.sortTime - b.sortTime).slice(0, 12), [matches]);
+  const fixtureList = useMemo(() => {
+    const now = Date.now();
+    const all = [...matches].sort((a, b) => a.sortTime - b.sortTime);
+    const live = all.filter((match) => !match.finished && match.sortTime <= now);
+    const upcoming = all.filter((match) => !match.finished && match.sortTime > now).sort((a, b) => a.sortTime - b.sortTime);
+    const recentFinals = all.filter((match) => match.finished).sort((a, b) => b.sortTime - a.sortTime);
+    const byId = new Map<number, Match>();
+
+    [...live, ...upcoming.slice(0, 6), ...recentFinals.slice(0, 10)].forEach((match) => byId.set(match.id, match));
+
+    return [...byId.values()].slice(0, 14);
+  }, [matches]);
   const completedMatches = useMemo(() => matches.filter((match) => match.finished).length, [matches]);
   const totalGoals = useMemo(() => matches.reduce((sum, match) => sum + match.goals, 0), [matches]);
   const activeMatches = useMemo(() => matches.filter((match) => !match.finished && match.sortTime <= Date.now()).length, [matches]);
@@ -895,10 +906,10 @@ export default function WC26Nexus() {
 
             <section style={{ minHeight: 0, overflow: 'auto', maxHeight: isCompact ? 320 : undefined, paddingRight: 4 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase', marginBottom: 8 }}>
-                <Activity size={14} /> Live / Upcoming Feed
+                <Activity size={14} /> Live / Upcoming / Recent Feed
               </div>
               {fixtureList.length === 0 ? (
-                <div style={{ color: '#94a3b8', fontSize: 13 }}>No fixtures loaded.</div>
+                <div style={{ color: '#94a3b8', fontSize: 13 }}>No matches loaded.</div>
               ) : (
                 fixtureList.slice(0, 8).map((match) => <MatchRow key={match.id} match={match} onSelect={() => setSelectedMatch(match)} />)
               )}
