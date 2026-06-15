@@ -80,6 +80,42 @@ interface NewsItem {
   published?: string;
 }
 
+interface MatchIqTeam {
+  id: number;
+  name: string;
+  code: string;
+  flag?: string;
+  group?: string;
+  rating?: number;
+}
+
+interface MatchIqMatch {
+  id: number;
+  stage: string;
+  group?: string | null;
+  kickoff_utc: string;
+  kickoff_ist?: string;
+  venue: string;
+  city: string;
+  status: string;
+  minute?: number | null;
+  home?: MatchIqTeam | null;
+  away?: MatchIqTeam | null;
+  home_score?: number | null;
+  away_score?: number | null;
+}
+
+interface MatchIqDetails {
+  match_id: number;
+  available: boolean;
+  source: string;
+  stats?: Array<{ label: string; home: string; away: string }>;
+  referee?: string | null;
+  note?: string | null;
+  home_lineup?: { coach?: string | null } | null;
+  away_lineup?: { coach?: string | null } | null;
+}
+
 const WORLD_CUP_OPENER_UTC = Date.UTC(2026, 5, 11, 19, 0, 0);
 const API_BASE = import.meta.env.VITE_WC26_API_URL || 'https://worldcup26.ir';
 const MATCHIQ_BASE = import.meta.env.VITE_MATCHIQ_API_URL || 'https://matchiq-api-1sye.onrender.com';
@@ -187,6 +223,56 @@ function normalizeMatch(raw: RawGame, index: number): Match {
     sortTime: parseLocalDate(raw.local_date),
     goals: homeScore + awayScore,
   };
+}
+
+function normalizeMatchIqMatch(raw: MatchIqMatch, index: number): Match {
+  const home = raw.home?.name || 'TBD';
+  const away = raw.away?.name || 'TBD';
+  const homeScore = toNumber(raw.home_score);
+  const awayScore = toNumber(raw.away_score);
+  const status = String(raw.status || '').toUpperCase();
+  const finished = status === 'FT' || status === 'FINISHED';
+  const live = status === 'LIVE' || status === 'IN_PLAY';
+  const kickoff = new Date(raw.kickoff_utc).getTime();
+
+  return {
+    id: toNumber(raw.id, index + 1),
+    home,
+    away,
+    homeCode: raw.home?.code || shortCode(home),
+    awayCode: raw.away?.code || shortCode(away),
+    score: finished || live ? `${homeScore}-${awayScore}` : 'VS',
+    time: live && raw.minute ? `${raw.minute}'` : finished ? 'FT' : (raw.kickoff_ist || new Date(raw.kickoff_utc).toLocaleString()),
+    group: String(raw.group || raw.home?.group || '-'),
+    matchday: raw.stage || 'Match',
+    venue: raw.venue ? `${raw.venue}, ${raw.city}` : raw.city || 'Venue TBD',
+    finished,
+    sortTime: Number.isFinite(kickoff) ? kickoff : Number.MAX_SAFE_INTEGER,
+    goals: homeScore + awayScore,
+  };
+}
+
+function normalizeMatchIqStandings(data: unknown): GroupStanding[] {
+  if (!Array.isArray(data)) return [];
+
+  return data.flatMap((group: any) => {
+    const groupName = String(group.group || '-');
+    const rows = Array.isArray(group.rows) ? group.rows : [];
+
+    return rows.map((row: any) => ({
+      group: groupName,
+      teamId: String(row.team?.id || row.team?.code || row.team?.name || '-'),
+      teamName: String(row.team?.name || 'Team'),
+      mp: toNumber(row.played),
+      w: toNumber(row.won),
+      d: toNumber(row.drawn),
+      l: toNumber(row.lost),
+      pts: toNumber(row.points),
+      gf: toNumber(row.goals_for),
+      ga: toNumber(row.goals_against),
+      gd: toNumber(row.goal_diff),
+    }));
+  });
 }
 
 function buildTeamNameMap(games: RawGame[]): Map<string, string> {
@@ -445,6 +531,8 @@ export default function WC26Nexus() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [standings, setStandings] = useState<GroupStanding[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
+  const [matchIqToday, setMatchIqToday] = useState<Match[]>([]);
+  const [matchIqDetails, setMatchIqDetails] = useState<MatchIqDetails | null>(null);
   const [status, setStatus] = useState<DataStatus>('loading');
   const [lastUpdated, setLastUpdated] = useState('');
   const isCompact = useIsCompactLayout();
@@ -461,6 +549,9 @@ export default function WC26Nexus() {
     return upcoming[0] || matches.find((match) => !match.finished) || matches[0];
   }, [matches]);
 
+  const intelMatch = matchIqToday[0] || fixtureList[0] || nextMatch;
+  const intelStats = matchIqDetails?.stats?.slice(0, 3) || [];
+
   const standingsByGroup = useMemo(() => {
     const grouped = new Map<string, GroupStanding[]>();
     standings.forEach((standing) => {
@@ -474,13 +565,14 @@ export default function WC26Nexus() {
 
   useEffect(() => {
     const fetchLiveData = async () => {
+      setStatus('loading');
+
       try {
-        setStatus('loading');
         const [gamesResponse, groupsResponse] = await Promise.all([
           fetch(`${API_BASE}/get/games`, { cache: 'no-store' }),
           fetch(`${API_BASE}/get/groups`, { cache: 'no-store' }),
         ]);
-        if (!gamesResponse.ok || !groupsResponse.ok) throw new Error(`API request failed: games ${gamesResponse.status}, groups ${groupsResponse.status}`);
+        if (!gamesResponse.ok || !groupsResponse.ok) throw new Error(`WC26 API request failed: games ${gamesResponse.status}, groups ${groupsResponse.status}`);
 
         const gamesJson = await gamesResponse.json();
         const groupsJson = await groupsResponse.json();
@@ -494,22 +586,61 @@ export default function WC26Nexus() {
         setStandings(normalizedStandings);
         setLastUpdated(new Date().toLocaleTimeString());
         setStatus(normalizedMatches.length > 0 || normalizedStandings.length > 0 ? 'public-api' : 'no-data');
-      } catch (error) {
-        console.error('WC26 API fetch failed:', error);
-        setMatches([]);
-        setStandings([]);
-        setStatus('api-error');
+      } catch (wc26Error) {
+        console.warn('WC26 API unavailable; trying MatchIQ fallback:', wc26Error);
+
+        try {
+          const [matchesResponse, standingsResponse] = await Promise.all([
+            fetch(`${MATCHIQ_BASE}/api/matches`, { cache: 'no-store' }),
+            fetch(`${MATCHIQ_BASE}/api/standings`, { cache: 'no-store' }),
+          ]);
+          if (!matchesResponse.ok || !standingsResponse.ok) throw new Error(`MatchIQ fallback failed: matches ${matchesResponse.status}, standings ${standingsResponse.status}`);
+
+          const matchIqMatches = (await matchesResponse.json()) as MatchIqMatch[];
+          const matchIqStandings = await standingsResponse.json();
+          const normalizedMatches = Array.isArray(matchIqMatches) ? matchIqMatches.map(normalizeMatchIqMatch) : [];
+          const normalizedStandings = normalizeMatchIqStandings(matchIqStandings);
+
+          setMatches(normalizedMatches);
+          setStandings(normalizedStandings);
+          setLastUpdated(new Date().toLocaleTimeString());
+          setStatus(normalizedMatches.length > 0 || normalizedStandings.length > 0 ? 'public-api' : 'no-data');
+        } catch (matchIqError) {
+          console.error('All WC26 data feeds failed:', matchIqError);
+          setMatches([]);
+          setStandings([]);
+          setStatus('api-error');
+        }
       }
     };
 
     const fetchNews = async () => {
       try {
-        const newsResponse = await fetch(`${MATCHIQ_BASE}/api/news`, { cache: 'no-store' });
-        if (!newsResponse.ok) return;
-        const newsJson = await newsResponse.json();
-        setNews(asArray<NewsItem>(newsJson.news, 'news').slice(0, 8));
+        const [newsResponse, todayResponse] = await Promise.all([
+          fetch(`${MATCHIQ_BASE}/api/news`, { cache: 'no-store' }),
+          fetch(`${MATCHIQ_BASE}/api/matches/today`, { cache: 'no-store' }),
+        ]);
+
+        if (newsResponse.ok) {
+          const newsJson = await newsResponse.json();
+          const headlines = Array.isArray(newsJson?.news) ? newsJson.news : [];
+          const discussions = Array.isArray(newsJson?.discussions) ? newsJson.discussions : [];
+          setNews([...headlines, ...discussions].slice(0, 10));
+        }
+
+        if (todayResponse.ok) {
+          const todayJson = (await todayResponse.json()) as MatchIqMatch[];
+          const normalizedToday = Array.isArray(todayJson) ? todayJson.map(normalizeMatchIqMatch) : [];
+          setMatchIqToday(normalizedToday);
+
+          const detailsTarget = todayJson.find((match) => match.status === 'FT') || todayJson[0];
+          if (detailsTarget?.id) {
+            const detailsResponse = await fetch(`${MATCHIQ_BASE}/api/matches/${detailsTarget.id}/details`, { cache: 'no-store' });
+            if (detailsResponse.ok) setMatchIqDetails(await detailsResponse.json());
+          }
+        }
       } catch (error) {
-        console.warn('MatchIQ news unavailable:', error);
+        console.warn('MatchIQ intelligence unavailable:', error);
       }
     };
 
@@ -563,7 +694,7 @@ export default function WC26Nexus() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 38, height: 38, borderRadius: 999, display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg, #22d3ee, #34d399)', boxShadow: '0 0 26px rgba(34,211,238,.45)' }}>⚽</div>
             <div>
-              <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: -1 }}>WC26 NEXUS</div>
+              <div style={{ fontSize: isCompact ? 21 : 26, fontWeight: 900, letterSpacing: -1 }}>WC26 NEXUS</div>
               <div style={{ fontSize: 11, color: '#67e8f9', letterSpacing: 1.6, textTransform: 'uppercase' }}>World Cup command center</div>
             </div>
           </div>
@@ -576,7 +707,7 @@ export default function WC26Nexus() {
           </div>
         </header>
 
-        <main style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '320px minmax(520px, 1fr) 400px', gridTemplateRows: isCompact ? 'auto 58vh auto' : undefined, gap: isCompact ? 10 : 14, minHeight: 0 }}>
+        <main style={{ display: 'grid', gridTemplateColumns: isCompact ? '1fr' : '320px minmax(520px, 1fr) 400px', gridTemplateRows: isCompact ? 'auto auto auto' : undefined, gap: isCompact ? 10 : 14, minHeight: 0 }}>
           <aside style={{ ...glass, borderRadius: 22, padding: isCompact ? 12 : 16, minHeight: 0, maxHeight: isCompact ? 'none' : undefined, display: 'grid', gridTemplateRows: isCompact ? 'auto auto auto' : 'auto auto 1fr', gap: 14 }}>
             <section style={{ borderBottom: '1px solid rgba(148,163,184,.16)', paddingBottom: 14 }}>
               <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>Next Signal</div>
@@ -607,7 +738,7 @@ export default function WC26Nexus() {
             </section>
           </aside>
 
-          <section style={{ ...glass, borderRadius: 26, minHeight: 0, height: isCompact ? '58vh' : 'auto', position: 'relative', overflow: 'hidden' }}>
+          <section style={{ ...glass, borderRadius: 26, minHeight: 0, height: isCompact ? 340 : 'auto', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: 18, left: 20, zIndex: 3 }}>
               <div style={{ color: '#67e8f9', fontSize: 12, letterSpacing: 1.8, textTransform: 'uppercase', fontWeight: 900 }}>Live Orbital Feed</div>
               <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>real-time match orbit • venue pulses • score signals</div>
@@ -615,6 +746,13 @@ export default function WC26Nexus() {
             <div style={{ position: 'absolute', top: 18, right: 20, zIndex: 3, color: '#94a3b8', fontSize: 12, textAlign: 'right' }}>
               <RefreshCw size={14} style={{ display: 'inline', verticalAlign: 'text-bottom', marginRight: 4 }} /> refreshes every 60s
             </div>
+            {!isCompact && intelMatch && (
+              <div style={{ ...glass, position: 'absolute', left: '50%', bottom: 18, transform: 'translateX(-50%)', zIndex: 4, borderRadius: 16, padding: '10px 16px', minWidth: 280, textAlign: 'center' }}>
+                <div style={{ color: '#67e8f9', fontSize: 11, letterSpacing: 1.6, textTransform: 'uppercase', fontWeight: 900 }}>Live Match Tracker</div>
+                <div style={{ fontWeight: 900, marginTop: 4 }}>{intelMatch.homeCode} <span style={{ color: '#34d399' }}>{intelMatch.score}</span> {intelMatch.awayCode}</div>
+                <div style={{ color: '#94a3b8', fontSize: 12 }}>{intelMatch.venue} • {intelMatch.time}</div>
+              </div>
+            )}
             <GlobeScene matches={fixtureList} activity={activity} compact={isCompact} />
           </section>
 
@@ -635,12 +773,28 @@ export default function WC26Nexus() {
 
             <section style={{ ...glass, borderRadius: 16, padding: 12 }}>
               <div style={{ color: '#67e8f9', fontSize: 12, fontWeight: 900, letterSpacing: 1.6, textTransform: 'uppercase' }}>Tournament Intel</div>
+              <div style={{ color: '#f8fafc', fontSize: 13, fontWeight: 800, marginTop: 9 }}>
+                {intelMatch ? `${intelMatch.home} vs ${intelMatch.away}` : 'MatchIQ feed standing by'}
+              </div>
+              {matchIqDetails?.referee && <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>Referee: {matchIqDetails.referee}</div>}
+              {matchIqDetails?.home_lineup?.coach && <div style={{ color: '#94a3b8', fontSize: 12 }}>Home coach: {matchIqDetails.home_lineup.coach}</div>}
+              {matchIqDetails?.away_lineup?.coach && <div style={{ color: '#94a3b8', fontSize: 12 }}>Away coach: {matchIqDetails.away_lineup.coach}</div>}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', rowGap: 6, columnGap: 12, color: '#cbd5e1', fontSize: 12, marginTop: 10 }}>
                 <span>MatchIQ news</span><strong style={{ color: news.length ? '#34d399' : '#94a3b8' }}>{news.length ? 'Online' : 'Standby'}</strong>
-                <span>Squad / coach data</span><strong style={{ color: '#34d399' }}>Available</strong>
-                <span>Basic match stats</span><strong style={{ color: '#34d399' }}>Available</strong>
+                <span>Squad / coach data</span><strong style={{ color: matchIqDetails ? '#34d399' : '#94a3b8' }}>{matchIqDetails ? 'Loaded' : 'Ready'}</strong>
+                <span>Basic match stats</span><strong style={{ color: intelStats.length ? '#34d399' : '#94a3b8' }}>{intelStats.length ? 'Loaded' : 'Ready'}</strong>
                 <span>Live timeline feed</span><strong style={{ color: '#fbbf24' }}>Pending</strong>
               </div>
+              {intelStats.length > 0 && (
+                <div style={{ borderTop: '1px solid rgba(148,163,184,.16)', marginTop: 10, paddingTop: 8 }}>
+                  {intelStats.map((stat) => (
+                    <div key={stat.label} style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', fontSize: 12, marginTop: 4 }}>
+                      <span>{stat.label}</span>
+                      <strong>{stat.home} - {stat.away}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           </aside>
         </main>
@@ -650,7 +804,7 @@ export default function WC26Nexus() {
             <Newspaper size={15} /> Tournament Buzz
           </div>
           <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', color: '#cbd5e1', fontSize: 13 }}>
-            {(news.length ? news : [{ title: 'MatchIQ news feed standing by', source: 'WC26 Nexus' }])
+            {(news.length ? news : matchIqToday.length ? matchIqToday.map((match) => ({ title: `${match.home} ${match.score} ${match.away}`, source: 'Today' })) : [{ title: 'MatchIQ news feed standing by', source: 'WC26 Nexus' }])
               .map((item) => `${item.source ? item.source + ': ' : ''}${item.title}`)
               .join('   •   ')}
           </div>
